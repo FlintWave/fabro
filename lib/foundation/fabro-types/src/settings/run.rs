@@ -88,6 +88,7 @@ impl RunNamespace {
         substitute_option_string(&mut self.model.controls.reasoning_effort, &mut lookup)?;
         substitute_option_string(&mut self.model.controls.speed, &mut lookup)?;
         substitute_string_vec(&mut self.checkpoint.exclude_globs, &mut lookup)?;
+        substitute_string_vec(&mut self.checkpoint.protected_globs, &mut lookup)?;
         substitute_environment(&mut self.environment, &mut lookup)?;
         substitute_map(&mut self.environment.env, &mut lookup)?;
         for route in self.notifications.values_mut() {
@@ -482,6 +483,7 @@ mod run_namespace_variable_substitution_tests {
         let mut run = RunNamespace {
             checkpoint: RunCheckpointSettings {
                 exclude_globs:     vec!["tmp/{{ vars.ENV }}/**".to_string()],
+                protected_globs:   vec!["prot/{{ vars.ENV }}/**".to_string()],
                 skip_git_hooks:    false,
                 commit_timeout_ms: 30_000,
             },
@@ -513,6 +515,7 @@ mod run_namespace_variable_substitution_tests {
         .unwrap();
 
         assert_eq!(run.checkpoint.exclude_globs, vec!["tmp/prod/**"]);
+        assert_eq!(run.checkpoint.protected_globs, vec!["prot/prod/**"]);
         assert_eq!(
             run.environment.image.docker.as_deref(),
             Some("registry.example/prod:latest")
@@ -870,6 +873,8 @@ impl Default for RunExecutionSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCheckpointSettings {
     pub exclude_globs:     Vec<String>,
+    #[serde(default)]
+    pub protected_globs:   Vec<String>,
     /// Accepted for compatibility. Fabro-managed run-branch checkpoint
     /// commits never run local Git commit hooks (e.g. `pre-commit`,
     /// `commit-msg`): the sandbox driver disables repository hooks on every
@@ -896,6 +901,7 @@ impl Default for RunCheckpointSettings {
     fn default() -> Self {
         Self {
             exclude_globs:     Vec::new(),
+            protected_globs:   Vec::new(),
             skip_git_hooks:    false,
             commit_timeout_ms: default_checkpoint_commit_timeout_ms(),
         }

@@ -17,11 +17,13 @@ When a node fails, Fabro classifies the failure into one of six categories. Thes
 | `compilation_loop` | Reserved for loop detection | — |
 | `canceled` | User or system cancellation | Cancel signal, abort |
 | `structural` | Reserved for scope enforcement | Write scope violations |
+| `protected_path_violation` | A stage changed a protected file | Protected paths restored to `HEAD`, stage fails |
 
 Classification happens automatically. Fabro inspects SDK error types, HTTP status codes, and error message patterns to assign the right class. The `failure_class` is written to [context](/execution/context) after each stage, so you can route on it in edge conditions:
 
 ```dot
 implement -> fix       [condition="failure_class=transient_infra"]
+implement -> fix       [condition="failure_class=protected_path_violation"]
 implement -> escalate  [condition="failure_class=deterministic"]
 ```
 

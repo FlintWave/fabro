@@ -23,7 +23,8 @@ use fabro_petri::artifacts::StoreArtifactWriter;
 use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces, Site,
+    CHECKPOINT_FAILED_CLASS, CheckpointKey, PROTECTED_PATH_VIOLATION_CLASS, RunGitSettings,
+    RunWorkspaces, Site,
 };
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
@@ -88,23 +89,25 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
 
 /// One run's pieces: the store, its platform records, where it ran.
 struct Harness {
-    run_id:         RunId,
-    run_dir:        PathBuf,
-    store:          Arc<MemoryRunStore>,
-    records:        Arc<MemoryPlatformRecords>,
-    blobs:          Arc<MemoryBlobs>,
+    run_id:          RunId,
+    run_dir:         PathBuf,
+    store:           Arc<MemoryRunStore>,
+    records:         Arc<MemoryPlatformRecords>,
+    blobs:           Arc<MemoryBlobs>,
     /// The `[run.artifacts] include` patterns the hooks collect under.
-    artifacts:      Vec<String>,
-    artifact_store: ArtifactStore,
+    artifacts:       Vec<String>,
+    artifact_store:  ArtifactStore,
     /// Where the run's workspaces are checked out from.
-    source:         Option<RunSource>,
+    source:          Option<RunSource>,
     /// Treat the local provider's workspaces as a sandbox's: `git` runs
     /// through the scope's environment and checkpoints leave as bundles.
-    sandboxed:      bool,
+    sandboxed:       bool,
     /// What a successful run's work does when it ends.
-    publisher:      Option<Arc<dyn RunPublisher>>,
-    fail_run_diff:  bool,
-    _root:          tempfile::TempDir,
+    publisher:       Option<Arc<dyn RunPublisher>>,
+    fail_run_diff:   bool,
+    /// The `[run.checkpoint] protected_globs` exercised by the test.
+    protected_globs: Vec<String>,
+    _root:           tempfile::TempDir,
 }
 
 impl Harness {
@@ -132,11 +135,14 @@ impl Harness {
             sandboxed: false,
             publisher: None,
             fail_run_diff: false,
+            protected_globs: Vec::new(),
             _root: root,
         }
     }
 
     fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
+        let mut checkpoint = RunCheckpointSettings::default();
+        checkpoint.protected_globs.clone_from(&self.protected_globs);
         HooksSpec {
             records:         if self.fail_run_diff {
                 Arc::new(RejectRunDiff(self.records.clone()))
@@ -145,6 +151,7 @@ impl Harness {
             },
             git:             RunGitSettings {
                 host_workspaces: *provider == SandboxProviderKind::LOCAL && !self.sandboxed,
+                checkpoint,
                 ..RunGitSettings::default()
             },
             artifacts:       self.artifacts.clone(),
@@ -1795,4 +1802,147 @@ async fn required_publication_blocks_the_terminal_result_and_cleanup() {
         assert_eq!(stored.failure, outcome.failure);
         assert_eq!(publisher.inner.published.lock().unwrap().len(), 1);
     }
+}
+
+/// A stage that modifies a protected path ends as an ordinary failure of
+/// class `protected_path_violation`: the run is not cancelled, the protected
+/// change is restored, and any other change is committed with the checkpoint.
+#[tokio::test]
+async fn a_protected_path_change_fails_the_stage_and_is_restored() {
+    let mut harness = Harness::new().await;
+    let (origin, _head) = upstream(&harness.run_dir.with_file_name("upstream"), 1).await;
+    harness.source = Some(file_source(&origin, "main", None));
+    harness.protected_globs = vec!["README.md".to_string()];
+    let settings = SETTINGS;
+    let workflow = workflow(
+        r#"  write [shape=parallelogram, script="echo tampered >> README.md && echo unprotected > notes.txt"]"#,
+        "  start -> write -> exit",
+    );
+    let outcome = harness.run(&workflow, settings).await;
+    assert!(
+        outcome
+            .failure
+            .as_deref()
+            .unwrap_or("")
+            .contains("protected paths restored: README.md"),
+        "{outcome:?}"
+    );
+
+    let inspection = harness.inspection().await;
+    let attempts: Vec<_> = inspection
+        .executions
+        .iter()
+        .filter_map(|execution| execution.engine.as_ref())
+        .flat_map(|engine| engine.attempts.iter())
+        .collect();
+    let write = attempts
+        .iter()
+        .find(|attempt| attempt.node.as_deref() == Some("write"))
+        .expect("the write stage finished");
+    assert_eq!(write.status, "failure");
+    assert_eq!(
+        write.failure.as_ref().map(|failure| failure.class.as_str()),
+        Some(PROTECTED_PATH_VIOLATION_CLASS)
+    );
+
+    let write_history: Vec<_> = inspection
+        .executions
+        .iter()
+        .filter_map(|execution| execution.engine.as_ref())
+        .flat_map(|engine| engine.history.iter())
+        .filter(|record| record.node.as_str() == "write")
+        .collect();
+    let write_history = write_history
+        .first()
+        .expect("the write stage's recorded outcome");
+    assert_eq!(
+        write_history.output.get("outcome"),
+        Some(&serde_json::json!("failed"))
+    );
+    assert_eq!(
+        write_history.output.get("failure_class"),
+        Some(&serde_json::json!(PROTECTED_PATH_VIOLATION_CLASS))
+    );
+    assert_eq!(
+        write_history.context_updates.get("failure_class"),
+        Some(&serde_json::json!(PROTECTED_PATH_VIOLATION_CLASS))
+    );
+    assert_ne!(
+        inspection
+            .finalization_failure
+            .as_ref()
+            .map(|failure| failure.code.as_str()),
+        Some(CHECKPOINT_FAILED_CLASS)
+    );
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let checkpoint = harness
+        .checkpoints()
+        .last()
+        .cloned()
+        .expect("a checkpoint landed");
+    assert_eq!(
+        git(&path, &["show", &format!("{}:README.md", checkpoint.1)]).await,
+        "revision 1",
+        "the protected file's HEAD content is committed"
+    );
+    assert_eq!(
+        git(&path, &["show", &format!("{}:notes.txt", checkpoint.1)]).await,
+        "unprotected",
+        "the unprotected change is committed"
+    );
+}
+
+/// A protected-path violation routes on its failure class: the `caught` stage
+/// runs and the unconditional `missed` stage does not.
+#[tokio::test]
+async fn a_protected_path_violation_routes_on_its_failure_class() {
+    let mut harness = Harness::new().await;
+    let (origin, _head) = upstream(&harness.run_dir.with_file_name("upstream"), 1).await;
+    harness.source = Some(file_source(&origin, "main", None));
+    harness.protected_globs = vec!["README.md".to_string()];
+    let workflow = workflow(
+        r#"  tamper [shape=parallelogram, script="echo tampered >> README.md"]
+  caught [shape=parallelogram, script="echo caught > caught.txt"]
+  missed [shape=parallelogram, script="echo missed > missed.txt"]"#,
+        "  start -> tamper\n  tamper -> caught [condition=\"failure_class=protected_path_violation\"]\n  tamper -> missed\n  caught -> exit\n  missed -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    let _ = outcome;
+    let inspection = harness.inspection().await;
+    let stages = stages(&inspection);
+    assert!(
+        stages.iter().any(|(name, _)| name == "caught"),
+        "{stages:?}"
+    );
+    assert!(
+        !stages.iter().any(|(name, _)| name == "missed"),
+        "{stages:?}"
+    );
+}
+
+/// A protected-path violation is not a success for routing: an edge keyed on
+/// `outcome=succeeded` is not taken.
+#[tokio::test]
+async fn a_protected_path_violation_is_not_a_success_for_routing() {
+    let mut harness = Harness::new().await;
+    let (origin, _head) = upstream(&harness.run_dir.with_file_name("upstream"), 1).await;
+    harness.source = Some(file_source(&origin, "main", None));
+    harness.protected_globs = vec!["README.md".to_string()];
+    let workflow = workflow(
+        r#"  tamper [shape=parallelogram, script="echo tampered >> README.md"]
+  wrong [shape=parallelogram, script="echo wrong > wrong.txt"]
+  right [shape=parallelogram, script="echo right > right.txt"]"#,
+        "  start -> tamper\n  tamper -> wrong [condition=\"outcome=succeeded\"]\n  tamper -> right\n  wrong -> exit\n  right -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    let _ = outcome;
+    let inspection = harness.inspection().await;
+    let stages = stages(&inspection);
+    assert!(stages.iter().any(|(name, _)| name == "right"), "{stages:?}");
+    assert!(
+        !stages.iter().any(|(name, _)| name == "wrong"),
+        "{stages:?}"
+    );
 }

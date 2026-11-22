@@ -1637,6 +1637,59 @@ exclude_globs = ["**/lower/**"]
         assert_eq!(settings.checkpoint.exclude_globs, vec!["**/lower/**"]);
         assert!(settings.checkpoint.skip_git_hooks);
     }
+
+    #[test]
+    fn protected_globs_resolves_and_replaces_wholesale() {
+        let layer = parse_settings("_version = 1\n");
+        let settings = super::workflow_settings_from_layer(layer)
+            .expect("settings should resolve")
+            .run;
+        assert!(settings.checkpoint.protected_globs.is_empty());
+
+        let lower = parse_settings(
+            r#"
+_version = 1
+
+[run.checkpoint]
+protected_globs = ["**/lower/**"]
+"#,
+        );
+        let higher = parse_settings(
+            r#"
+_version = 1
+
+[run.checkpoint]
+protected_globs = ["**/higher/**"]
+"#,
+        );
+        let merged = higher.combine(lower);
+        let settings = super::workflow_settings_from_layer(merged)
+            .expect("settings should resolve")
+            .run;
+        assert_eq!(settings.checkpoint.protected_globs, vec!["**/higher/**"]);
+
+        let workflow = parse_settings(
+            r"
+_version = 1
+
+[run.checkpoint]
+skip_git_hooks = true
+",
+        );
+        let user = parse_settings(
+            r#"
+_version = 1
+
+[run.checkpoint]
+protected_globs = ["**/lower/**"]
+"#,
+        );
+        let merged = workflow.combine(user);
+        let settings = super::workflow_settings_from_layer(merged)
+            .expect("merged settings should resolve")
+            .run;
+        assert_eq!(settings.checkpoint.protected_globs, vec!["**/lower/**"]);
+    }
 }
 
 mod run_agent_mcps {

@@ -281,6 +281,9 @@ fn resolve_checkpoint(checkpoint: Option<&RunCheckpointLayer>) -> RunCheckpointS
         exclude_globs:     checkpoint
             .map(|checkpoint| checkpoint.exclude_globs.clone())
             .unwrap_or_default(),
+        protected_globs:   checkpoint
+            .map(|checkpoint| checkpoint.protected_globs.clone())
+            .unwrap_or_default(),
         skip_git_hooks:    checkpoint
             .and_then(|checkpoint| checkpoint.skip_git_hooks)
             .unwrap_or(false),

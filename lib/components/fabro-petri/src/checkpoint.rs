@@ -24,6 +24,7 @@ use crate::source::{RunSource, SourceRevision};
 /// The failure class of a stage whose checkpoint commit failed: fatal to
 /// the run, and terminal for a restart.
 pub const CHECKPOINT_FAILED_CLASS: &str = "checkpoint_failed";
+pub const PROTECTED_PATH_VIOLATION_CLASS: &str = "protected_path_violation";
 
 /// The effect kind of a checkpoint in its operation identity.
 pub const CHECKPOINT_EFFECT: &str = "checkpoint";
@@ -307,14 +308,15 @@ impl WorkspaceDiff {
 /// performs on them.
 #[derive(Clone, Debug)]
 pub struct RunWorkspaces {
-    run_dir:       PathBuf,
-    run_id:        String,
-    author:        GitAuthor,
-    exclude_globs: Vec<String>,
-    timeout:       Duration,
+    run_dir:         PathBuf,
+    run_id:          String,
+    author:          GitAuthor,
+    exclude_globs:   Vec<String>,
+    protected_globs: Vec<String>,
+    timeout:         Duration,
     /// Where a Git target's workspaces are checked out from; `None` for a
     /// run with no remote repository.
-    source:        Option<RunSource>,
+    source:          Option<RunSource>,
 }
 
 impl RunWorkspaces {
@@ -330,6 +332,7 @@ impl RunWorkspaces {
             run_id,
             author,
             exclude_globs: settings.exclude_globs.clone(),
+            protected_globs: settings.protected_globs.clone(),
             timeout: Duration::from_millis(settings.commit_timeout_ms.max(1)),
             source: None,
         }
@@ -653,6 +656,118 @@ impl RunWorkspaces {
             return Ok(false);
         }
         self.has_object(site, sha).await
+    }
+
+    /// Restore any workspace path that differs from `HEAD` and matches a
+    /// protected glob, returning the sorted, de-duplicated list of
+    /// affected paths.
+    pub async fn restore_protected(&self, site: &Site) -> Result<Vec<String>, CheckpointError> {
+        if self.protected_globs.is_empty() {
+            return Ok(Vec::new());
+        }
+        if self.head(site).await?.is_none() {
+            return Ok(Vec::new());
+        }
+
+        let pathspecs: Vec<String> = self
+            .protected_globs
+            .iter()
+            .map(|glob| format!(":(glob){glob}"))
+            .collect();
+
+        // List changed/untracked paths restricted to the protected
+        // pathspecs.
+        let mut args: Vec<String> = vec![
+            "status".to_string(),
+            "--porcelain=v1".to_string(),
+            "-z".to_string(),
+            "--untracked-files=all".to_string(),
+            "--".to_string(),
+        ];
+        args.extend(pathspecs.clone());
+
+        let status_output = self.run(site, "status", &args).await?;
+        if !status_output.success {
+            return Err(CheckpointError::Command {
+                action: "status".to_string(),
+                status: "non-zero exit".to_string(),
+                detail: detail(&status_output.stderr),
+            });
+        }
+        let output = String::from_utf8_lossy(&status_output.stdout);
+        let mut paths: Vec<String> = Vec::new();
+        let tokens: Vec<&str> = output.split('\0').collect();
+        let mut i = 0;
+        while i < tokens.len() {
+            if tokens[i].is_empty() {
+                i += 1;
+                continue;
+            }
+            let entry = tokens[i];
+            if entry.len() < 4 {
+                i += 1;
+                continue;
+            }
+            let status = &entry[..2];
+            let path = &entry[3..];
+            if status.starts_with('R') || status.starts_with('C') {
+                paths.push(path.to_string());
+                if i + 1 < tokens.len() && !tokens[i + 1].is_empty() {
+                    paths.push(tokens[i + 1].to_string());
+                    i += 2;
+                    continue;
+                }
+            } else {
+                paths.push(path.to_string());
+            }
+            i += 1;
+        }
+
+        // De-dupe and sort.
+        paths.sort();
+        paths.dedup();
+
+        if paths.is_empty() {
+            return Ok(paths);
+        }
+
+        // Restore tracked files to HEAD.
+        let mut reset_args: Vec<String> = vec![
+            "reset".to_string(),
+            "-q".to_string(),
+            "HEAD".to_string(),
+            "--".to_string(),
+        ];
+        reset_args.extend(pathspecs.clone());
+        self.git(site, "reset", &reset_args).await?;
+
+        for path in &paths {
+            let exists = self
+                .git_status(site, "cat-file", &[
+                    "cat-file".to_string(),
+                    "-e".to_string(),
+                    format!("HEAD:{path}"),
+                ])
+                .await?;
+            if exists.is_some() {
+                self.git(site, "checkout", &[
+                    "checkout".to_string(),
+                    "-q".to_string(),
+                    "HEAD".to_string(),
+                    "--".to_string(),
+                    path.clone(),
+                ])
+                .await?;
+            }
+        }
+
+        // Remove untracked files under protected pathspecs.
+        let mut clean_args: Vec<String> =
+            vec!["clean".to_string(), "-fdq".to_string(), "--".to_string()];
+        clean_args.extend(pathspecs);
+        self.git(site, "clean", &clean_args).await?;
+
+        Ok(paths)
     }
 
     /// Bring the workspace back to `sha`: tracked files reset, untracked
@@ -1341,5 +1456,201 @@ mod tests {
         let long = "x".repeat(600);
         assert_eq!(detail(long.as_bytes()).len(), 512);
         assert_eq!(detail(b""), "no output");
+    }
+    #[tokio::test]
+    async fn restore_protected_smoke() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let settings = RunCheckpointSettings {
+            protected_globs: vec!["prot/**".to_string()],
+            ..RunCheckpointSettings::default()
+        };
+        let workspaces = RunWorkspaces::new(
+            dir.path().to_path_buf(),
+            "run-1".to_string(),
+            GitAuthor::default(),
+            &settings,
+        );
+        let workspace = "invocation-0-scope-0";
+        let path = workspaces.workspace_path(workspace);
+        fs::create_dir_all(path.join("prot")).await.expect("dir");
+        fs::write(path.join("prot/a.txt"), "orig\n")
+            .await
+            .expect("file");
+        fs::write(path.join("unprot.txt"), "orig\n")
+            .await
+            .expect("file");
+        let key = CheckpointKey {
+            execution: 0,
+            firing:    2,
+            attempt:   1,
+        };
+        workspaces
+            .commit(
+                &workspaces.host(workspace),
+                workspace,
+                key,
+                "build",
+                "success",
+            )
+            .await
+            .expect("commit");
+
+        // modified + new protected, delete tracked protected
+        fs::write(path.join("prot/a.txt"), "changed\n")
+            .await
+            .unwrap();
+        fs::write(path.join("prot/new.txt"), "new\n").await.unwrap();
+        // outside changed
+        fs::write(path.join("unprot.txt"), "changed\n")
+            .await
+            .unwrap();
+
+        let restored = workspaces
+            .restore_protected(&workspaces.host(workspace))
+            .await
+            .expect("restore");
+        assert!(restored.contains(&"prot/a.txt".to_string()));
+        assert!(restored.contains(&"prot/new.txt".to_string()));
+        let content = fs::read_to_string(path.join("prot/a.txt")).await.unwrap();
+        assert_eq!(content, "orig\n");
+        assert!(!path.join("prot/new.txt").exists());
+        // outside changed stays
+        let outside = fs::read_to_string(path.join("unprot.txt")).await.unwrap();
+        assert_eq!(outside, "changed\n");
+    }
+
+    #[tokio::test]
+    async fn restore_protected_no_protected_globs_leaves_modification() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let settings = RunCheckpointSettings::default();
+        let workspaces = RunWorkspaces::new(
+            dir.path().to_path_buf(),
+            "run-1".to_string(),
+            GitAuthor::default(),
+            &settings,
+        );
+        let workspace = "invocation-0-scope-0";
+        let path = workspaces.workspace_path(workspace);
+        fs::create_dir_all(&path).await.unwrap();
+        fs::write(path.join("a.txt"), "orig\n").await.unwrap();
+        let key = CheckpointKey {
+            execution: 0,
+            firing:    2,
+            attempt:   1,
+        };
+        workspaces
+            .commit(
+                &workspaces.host(workspace),
+                workspace,
+                key,
+                "build",
+                "success",
+            )
+            .await
+            .unwrap();
+        fs::write(path.join("a.txt"), "changed\n").await.unwrap();
+
+        let restored = workspaces
+            .restore_protected(&workspaces.host(workspace))
+            .await
+            .unwrap();
+        assert!(restored.is_empty());
+        assert_eq!(
+            fs::read_to_string(path.join("a.txt")).await.unwrap(),
+            "changed\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_protected_deleted_tracked_restored() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let settings = RunCheckpointSettings {
+            protected_globs: vec!["prot/**".to_string()],
+            ..RunCheckpointSettings::default()
+        };
+        let workspaces = RunWorkspaces::new(
+            dir.path().to_path_buf(),
+            "run-1".to_string(),
+            GitAuthor::default(),
+            &settings,
+        );
+        let workspace = "invocation-0-scope-0";
+        let path = workspaces.workspace_path(workspace);
+        fs::create_dir_all(path.join("prot")).await.unwrap();
+        fs::write(path.join("prot/a.txt"), "orig\n").await.unwrap();
+        let key = CheckpointKey {
+            execution: 0,
+            firing:    2,
+            attempt:   1,
+        };
+        workspaces
+            .commit(
+                &workspaces.host(workspace),
+                workspace,
+                key,
+                "build",
+                "success",
+            )
+            .await
+            .unwrap();
+        fs::remove_file(path.join("prot/a.txt")).await.unwrap();
+
+        let restored = workspaces
+            .restore_protected(&workspaces.host(workspace))
+            .await
+            .unwrap();
+        assert!(restored.contains(&"prot/a.txt".to_string()));
+        assert!(path.join("prot/a.txt").exists());
+        assert_eq!(
+            fs::read_to_string(path.join("prot/a.txt")).await.unwrap(),
+            "orig\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_protected_outside_not_reported() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let settings = RunCheckpointSettings {
+            protected_globs: vec!["prot/**".to_string()],
+            ..RunCheckpointSettings::default()
+        };
+        let workspaces = RunWorkspaces::new(
+            dir.path().to_path_buf(),
+            "run-1".to_string(),
+            GitAuthor::default(),
+            &settings,
+        );
+        let workspace = "invocation-0-scope-0";
+        let path = workspaces.workspace_path(workspace);
+        fs::create_dir_all(&path).await.unwrap();
+        fs::write(path.join("unprot.txt"), "orig\n").await.unwrap();
+        let key = CheckpointKey {
+            execution: 0,
+            firing:    2,
+            attempt:   1,
+        };
+        workspaces
+            .commit(
+                &workspaces.host(workspace),
+                workspace,
+                key,
+                "build",
+                "success",
+            )
+            .await
+            .unwrap();
+        fs::write(path.join("unprot.txt"), "changed\n")
+            .await
+            .unwrap();
+
+        let restored = workspaces
+            .restore_protected(&workspaces.host(workspace))
+            .await
+            .unwrap();
+        assert!(!restored.contains(&"unprot.txt".to_string()));
+        assert_eq!(
+            fs::read_to_string(path.join("unprot.txt")).await.unwrap(),
+            "changed\n"
+        );
     }
 }

@@ -150,10 +150,16 @@ impl Combine for RunCheckpointLayer {
         } else {
             self.exclude_globs
         };
+        let protected_globs = if self.protected_globs.is_empty() {
+            other.protected_globs
+        } else {
+            self.protected_globs
+        };
         let skip_git_hooks = self.skip_git_hooks.or(other.skip_git_hooks);
         let commit_timeout = self.commit_timeout.or(other.commit_timeout);
         Self {
             exclude_globs,
+            protected_globs,
             skip_git_hooks,
             commit_timeout,
         }

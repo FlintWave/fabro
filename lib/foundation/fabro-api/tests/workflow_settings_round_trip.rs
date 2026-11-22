@@ -91,6 +91,10 @@ skip_git_hooks = true
         json["run"]["checkpoint"]["exclude_globs"],
         serde_json::json!([])
     );
+    assert_eq!(
+        json["run"]["checkpoint"]["protected_globs"],
+        serde_json::json!([])
+    );
 
     let round_trip: ApiWorkflowSettings =
         serde_json::from_value(json).expect("workflow settings should deserialize");

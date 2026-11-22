@@ -117,8 +117,8 @@ use tracing::{debug, info, warn};
 use crate::artifacts::{ArtifactWriteError, ArtifactWriter};
 use crate::blobs::Blobs;
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
-    RunWorkspaces, Site, Snapshot, WorkspaceDiff,
+    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS,
+    PROTECTED_PATH_VIOLATION_CLASS, RunGitSettings, RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
 use crate::fork::{self, ForkError};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
@@ -1583,6 +1583,25 @@ fn is_checkpoint_failure(status: &Status) -> bool {
     matches!(status, Status::Failure(info) if info.class.as_str() == CHECKPOINT_FAILED_CLASS)
 }
 
+fn protected_paths_message(paths: &[String]) -> String {
+    let total = paths.len();
+    let shown: Vec<&String> = paths.iter().take(20).collect();
+    let shown = shown
+        .iter()
+        .map(|p| p.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if total > 20 {
+        format!(
+            "protected paths restored: {}; and {} more",
+            shown,
+            total - 20
+        )
+    } else {
+        format!("protected paths restored: {shown}")
+    }
+}
+
 #[async_trait::async_trait]
 impl ExecutionHooks for FabroHooks {
     async fn before_attempt(
@@ -1605,12 +1624,104 @@ impl ExecutionHooks for FabroHooks {
             firing:    request.view.firing.raw(),
             attempt:   request.view.attempt.raw(),
         };
-        let original = request.outcome.status.clone();
+        let original_outcome = request.outcome.clone();
+        let original = original_outcome.status.clone();
         let origin = request.origin;
         let mut prepared = self.inner.prepare_result(context, request).await?;
-        let effective = prepared.adjustment.status.clone().unwrap_or(original);
+        let mut effective = prepared.adjustment.status.clone().unwrap_or(original);
         if matches!(effective, Status::Cancelled) {
             return Ok(prepared);
+        }
+        // Restore any protected paths the stage touched before committing.
+        // Only relevant when checkpointing is enabled, since there is no
+        // checkpoint commit otherwise.
+        if self.checkpoint_enabled {
+            let site = match self.site_of(context, scope).await {
+                Ok(Some((_, site))) => Some(site),
+                Ok(None) => None,
+                Err(error) => {
+                    let message = error.to_string();
+                    warn!(
+                        run_id = %self.run_id,
+                        node,
+                        execution = key.execution,
+                        firing = key.firing,
+                        attempt = key.attempt,
+                        error = %message,
+                        "checkpoint failed; the run ends"
+                    );
+                    self.fail_run(&message);
+                    prepared.adjustment.status = Some(Status::Failure(
+                        FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
+                    ));
+                    prepared.adjustment.reason = Some(message);
+                    return Ok(prepared);
+                }
+            };
+            if let Some(site) = site {
+                match self.workspaces.restore_protected(&site).await {
+                    Ok(paths) if !paths.is_empty() => {
+                        let message = protected_paths_message(&paths);
+                        match effective {
+                            Status::Success | Status::PartialSuccess { .. } => {
+                                let new_status = Status::Failure(
+                                    FailureInfo::new(message.clone())
+                                        .with_class(PROTECTED_PATH_VIOLATION_CLASS),
+                                );
+                                prepared.adjustment.status = Some(new_status.clone());
+                                prepared.adjustment.reason = Some(message);
+                                // Route the adjusted failure like any other failed
+                                // stage: overwrite only the routing keys, keeping
+                                // the stage's other output and context keys.
+                                let mut output = match original_outcome.output {
+                                    serde_json::Value::Object(map) => map,
+                                    _ => serde_json::Map::new(),
+                                };
+                                output.insert("outcome".to_string(), json!("failed"));
+                                output.insert(
+                                    "failure_class".to_string(),
+                                    json!(PROTECTED_PATH_VIOLATION_CLASS),
+                                );
+                                prepared.adjustment.output =
+                                    Some(serde_json::Value::Object(output));
+                                let mut context_updates = original_outcome.context_updates.clone();
+                                context_updates.insert(
+                                    "failure_class".into(),
+                                    json!(PROTECTED_PATH_VIOLATION_CLASS),
+                                );
+                                prepared.adjustment.context_updates = Some(context_updates);
+                                effective = new_status;
+                            }
+                            Status::Failure(_) => {
+                                prepared.notes.push(Note::new(
+                                    "fabro.protected_paths",
+                                    serde_json::json!({ "paths": paths }),
+                                ));
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        let message = error.to_string();
+                        warn!(
+                            run_id = %self.run_id,
+                            node,
+                            execution = key.execution,
+                            firing = key.firing,
+                            attempt = key.attempt,
+                            error = %message,
+                            "checkpoint failed; the run ends"
+                        );
+                        self.fail_run(&message);
+                        prepared.adjustment.status = Some(Status::Failure(
+                            FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
+                        ));
+                        prepared.adjustment.reason = Some(message);
+                        return Ok(prepared);
+                    }
+                }
+            }
         }
         match self
             .snapshot(context, scope, key, &node, &effective, origin)

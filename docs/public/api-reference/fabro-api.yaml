@@ -16053,6 +16053,11 @@ components:
           type: array
           items:
             type: string
+        protected_globs:
+          type: array
+          items:
+            type: string
+          default: []
         skip_git_hooks:
           type: boolean
           default: false
