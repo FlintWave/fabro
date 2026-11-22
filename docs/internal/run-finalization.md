@@ -6,6 +6,9 @@ fork always matches the stored declaration. A failed checkpoint rejects with
 `checkpoint_failed` and skips publication. The checkpoint failure cancelled the
 run, so Petri may commit `cancelled`; Fabro reports that finish as a workflow
 failure with the checkpoint's message.
+An exhausted run budget (`[run.budget] max_usd`) rejects the same way with
+`budget_exhausted`, also skips publication, and Fabro reports the finish as a
+failure with reason `budget_exhausted` and the budget's message.
 For successful workflow execution this prepares the final diff, then uses the
 existing publisher to retry the push and reconcile or create the pull request.
 A preparation or publication error rejects with `publish_failed` and a rendered
