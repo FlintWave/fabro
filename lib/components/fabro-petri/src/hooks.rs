@@ -130,6 +130,10 @@ use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 /// The note kind the hooks record on a firing about its checkpoint.
 pub const CHECKPOINT_NOTE: &str = "fabro.checkpoint";
 
+/// The note kind the hooks record on a failing firing whose protected paths
+/// were restored.
+pub const PROTECTED_PATHS_NOTE: &str = "fabro.protected_paths";
+
 /// The effect kind of an artifact collection in its operation identity.
 pub const ARTIFACT_EFFECT: &str = "artifact";
 
@@ -1694,7 +1698,7 @@ impl ExecutionHooks for FabroHooks {
                             }
                             Status::Failure(_) => {
                                 prepared.notes.push(Note::new(
-                                    "fabro.protected_paths",
+                                    PROTECTED_PATHS_NOTE,
                                     serde_json::json!({ "paths": paths }),
                                 ));
                             }
