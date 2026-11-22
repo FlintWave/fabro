@@ -503,6 +503,8 @@ max_usd = 5.00
 |---|---|
 | `max_usd` | Positive dollar amount. Zero, negative, NaN, or infinite values are a configuration error. |
 
+When the total reaches the cap, the finishing stage fails with failure class `budget_exhausted` and the run ends. No edge out of that stage is taken, so the failure cannot be routed to a fix step.
+
 The cap is evaluated at stage boundaries, after a stage finishes and its checkpoint commit lands, so a single long stage can overshoot it; pair it with node `timeout` to bound that. The accumulated total includes every finished stage attempt, including sub-agent sessions, and is carried across a resume — resuming does not reset it. Retrying or forking into a new run starts from zero.
 
 Absence of `[run.budget]` disables the cap.
