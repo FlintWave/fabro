@@ -53,6 +53,7 @@
               "execution/run-configuration",
               "execution/child-runs",
               "execution/automations",
+              "execution/evals",
               "execution/environments",
               "execution/context",
               "execution/checkpoints",

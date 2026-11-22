@@ -825,6 +825,32 @@ pub(crate) struct WaitArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct EvalArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Path to the eval suite TOML file
+    pub(crate) suite: PathBuf,
+
+    /// Restrict the run to the named case(s)
+    #[arg(long = "only", value_name = "CASE")]
+    pub(crate) only: Vec<String>,
+
+    /// Default named environment for agent tools (a case's own environment
+    /// overrides this)
+    #[arg(long)]
+    pub(crate) environment: Option<String>,
+
+    /// Write the JSON report to FILE
+    #[arg(long, value_name = "FILE")]
+    pub(crate) output: Option<PathBuf>,
+
+    /// Emit JSON output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
 pub(crate) struct SteerArgs {
     #[command(flatten)]
     pub(crate) server: ServerTargetArgs,
@@ -1440,6 +1466,8 @@ pub(crate) enum Commands {
     Artifact(ArtifactNamespace),
     /// Export a run's durable state to a directory
     Dump(DumpArgs),
+    /// Run an eval suite
+    Eval(EvalArgs),
     #[command(flatten)]
     RunsCmd(RunsCommands),
     /// List and test LLM models
@@ -1532,6 +1560,7 @@ impl Commands {
                 ArtifactCommand::Cp(_) => "artifact cp",
             },
             Self::Dump(_) => "dump",
+            Self::Eval(_) => "eval",
             Self::Exec(_) => "exec",
             Self::RunCmd(cmd) => cmd.name(),
             Self::Preflight(_) => "preflight",

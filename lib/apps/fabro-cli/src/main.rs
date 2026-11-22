@@ -270,6 +270,10 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
             Commands::Dump(args) => {
                 commands::dump::run(&args, &base_ctx).await?;
             }
+            Commands::Eval(args) => {
+                let styles = Styles::detect_stderr();
+                commands::eval::run(&args, &styles, &base_ctx).await?;
+            }
             Commands::RunsCmd(cmd) => {
                 Box::pin(commands::runs::dispatch(cmd, &base_ctx)).await?;
             }

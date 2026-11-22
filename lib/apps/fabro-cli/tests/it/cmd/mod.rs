@@ -13,6 +13,7 @@ mod discord;
 mod docs;
 mod doctor;
 mod dump;
+mod eval;
 mod events;
 mod exec;
 mod fabro;

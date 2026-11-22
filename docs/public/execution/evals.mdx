@@ -1,0 +1,21 @@
+---
+title: Evaluating workflows
+---
+
+An eval suite runs a fixed set of known tasks and reports a pass rate.
+
+## File format
+
+```toml
+_version = 1
+
+[suite]
+name = "factory-smoke"
+pass_threshold = 0.8
+
+[[case]]
+name = "fix-add"
+workflow = "workflows/fix/workflow.toml"
+```
+
+Exit codes: 0 when pass rate >= threshold, 1 otherwise. Rerun suites whenever prompts, models or hooks change, and add a case for every incident.

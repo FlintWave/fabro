@@ -76,6 +76,7 @@ fabro [OPTIONS] [COMMAND]
 | `fabro docs` | Open the docs website in the browser |
 | `fabro doctor` | Check environment and integration health |
 | `fabro dump` | Export a run's durable state to a directory |
+| `fabro eval` | Run an eval suite |
 | `fabro events` | View the event log of a workflow run |
 | `fabro fork` | Fork a workflow run from an earlier checkpoint into a new run |
 | `fabro graph` | Render a workflow graph as SVG |
@@ -442,6 +443,30 @@ fabro dump [OPTIONS] --output <OUTPUT> <RUN>
 | Option | Description |
 | --- | --- |
 | `-o, --output <output>` | Output directory (must not exist or be empty) |
+| `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+
+### `fabro eval`
+
+Run an eval suite
+
+```bash
+fabro eval [OPTIONS] <SUITE>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `SUITE` | Path to the eval suite TOML file |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--environment <environment>` | Default named environment for agent tools (a case's own environment overrides this) |
+| `--json` | Emit JSON output |
+| `--only <case>` | Restrict the run to the named case(s) |
+| `--output <file>` | Write the JSON report to FILE |
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
 
 ### `fabro events`
