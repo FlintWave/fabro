@@ -59,7 +59,7 @@ Cases run one at a time, in file order. Each ends with one of four results:
 |---|---|
 | `passed` | The run succeeded. |
 | `failed` | The run reached any other terminal status. |
-| `timeout` | The run was still going when the case's `timeout` expired. `fabro eval` stops waiting; it does not cancel the run. |
+| `timeout` | The run was still going when the case's `timeout` expired; `fabro eval` cancels the run and waits up to 30 seconds for it to stop. |
 | `error` | The run could not be created or started. |
 
 The pass rate is the number of `passed` cases divided by the number of cases run. `fabro eval` exits 0 when the pass rate is at least `pass_threshold`, and 1 otherwise.

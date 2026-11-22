@@ -12,6 +12,10 @@ use crate::shared::{format_duration_ms, format_usd_micros, print_json_pretty};
 mod report;
 mod suite;
 
+/// Grace period (seconds) `fabro eval` waits after cancelling a timed-out
+/// run for the run to reach a terminal status.
+const CANCEL_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(30);
+
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -129,20 +133,28 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
         let timeout_dur = suite::parse_duration(&case.timeout)
             .unwrap_or_else(|_| std::time::Duration::from_hours(1));
         let deadline = Instant::now() + timeout_dur;
-        let interval = std::time::Duration::from_secs(1);
         let mut final_status = None;
         let mut timed_out = false;
-        loop {
-            let status = client.retrieve_run(&run_id).await?.lifecycle.status;
-            if status.is_terminal() {
-                final_status = Some(status);
-                break;
+        let mut cancel_error: Option<String> = None;
+        let mut grace_expired = false;
+
+        if let Some(status) = poll_until_terminal_or_deadline(&client, &run_id, deadline).await? {
+            final_status = Some(status);
+        } else {
+            timed_out = true;
+            if let Err(err) = client.cancel_run(&run_id).await {
+                cancel_error = Some(format!("could not cancel run: {err}"));
             }
-            if Instant::now() >= deadline {
-                timed_out = true;
-                break;
+            if cancel_error.is_none() {
+                let grace_deadline = Instant::now() + CANCEL_GRACE_PERIOD;
+                if let Some(status) =
+                    poll_until_terminal_or_deadline(&client, &run_id, grace_deadline).await?
+                {
+                    final_status = Some(status);
+                } else {
+                    grace_expired = true;
+                }
             }
-            tokio::time::sleep(interval.min(deadline - Instant::now())).await;
         }
 
         let conclusion = if final_status.is_some() {
@@ -157,7 +169,12 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
 
         let duration_ms = case_start.elapsed().as_millis() as u64;
         let (result, status_str) = if timed_out {
-            (report::CaseResult::Timeout, None)
+            if let Some(s) = &final_status {
+                let kind = crate::shared::run_status_kind(*s);
+                (report::CaseResult::Timeout, Some(kind.to_string()))
+            } else {
+                (report::CaseResult::Timeout, None)
+            }
         } else {
             let s = final_status.expect("final status");
             let kind = crate::shared::run_status_kind(s);
@@ -172,6 +189,13 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
             .and_then(|c| c.usage)
             .and_then(|u| u.cost)
             .map(|c| c.usd_micros);
+        let error = cancel_error.or_else(|| {
+            if timed_out && grace_expired {
+                Some("run did not stop within 30s of cancellation".to_string())
+            } else {
+                None
+            }
+        });
         let report_case = report::CaseReport {
             name: case.name.clone(),
             result,
@@ -179,7 +203,7 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
             status: status_str,
             duration_ms: Some(duration_ms),
             cost_usd_micros: cost,
-            error: None,
+            error,
         };
         if !args.json {
             print_case_line(
@@ -268,6 +292,26 @@ fn build_run_args(
         parent:               None,
         preserve_sandbox:     false,
         detach:               false,
+    }
+}
+
+async fn poll_until_terminal_or_deadline(
+    client: &fabro_client::Client,
+    run_id: &fabro_types::RunId,
+    deadline: Instant,
+) -> Result<Option<fabro_types::RunStatus>> {
+    let interval = std::time::Duration::from_secs(1);
+    loop {
+        let status = client.retrieve_run(run_id).await?.lifecycle.status;
+        if status.is_terminal() {
+            return Ok(Some(status));
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(None);
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        tokio::time::sleep(interval.min(remaining)).await;
     }
 }
 

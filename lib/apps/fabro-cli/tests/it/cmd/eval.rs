@@ -257,3 +257,103 @@ environment = "local"
         Some("c1")
     );
 }
+
+#[test]
+fn eval_timeout_cancels_the_run_and_continues() {
+    let context = test_context!();
+    context.ensure_home_server_auth_methods();
+    context.write_temp(
+        "slow/workflow.fabro",
+        "digraph W { start [shape=Mdiamond] exit [shape=Msquare] run [shape=parallelogram, script=\"sleep 120\", max_retries=0] start -> run -> exit }",
+    );
+    context.write_temp(
+        "slow/workflow.toml",
+        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n",
+    );
+    let wf = "digraph W { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }";
+    context.write_temp("quick/workflow.fabro", wf);
+    context.write_temp(
+        "quick/workflow.toml",
+        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n",
+    );
+    context.write_temp(
+        "suite.toml",
+        r#"_version = 1
+[suite]
+name = "smoke"
+pass_threshold = 0.5
+[[case]]
+name = "slow"
+workflow = "slow/workflow.toml"
+environment = "local"
+timeout = "3s"
+[[case]]
+name = "quick"
+workflow = "quick/workflow.toml"
+environment = "local"
+"#,
+    );
+    let suite = context.temp_dir.join("suite.toml");
+    let started = std::time::Instant::now();
+    let output = context
+        .command()
+        .args(["eval", "--json", suite.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let elapsed = started.elapsed();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stdout:{stdout}\nstderr:{stderr}");
+    let v: Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(v["cases"][0]["result"], "timeout");
+    assert_eq!(v["cases"][1]["result"], "passed");
+    assert!(v["cases"][0]["run_id"].is_string(), "{v}");
+    assert!(v["cases"][0]["status"].is_string(), "{v}");
+    assert!(
+        v["cases"][0]["error"].is_null(),
+        "error should be null/absent: {v}"
+    );
+    let run_id = v["cases"][0]["run_id"].as_str().unwrap();
+    let run_dir = context.find_run_dir(run_id);
+    let state = run_state(&run_dir);
+    assert_eq!(state.status, fabro_types::RunStatus::Failed {
+        reason: fabro_types::FailureReason::Cancelled,
+    });
+    assert!(elapsed.as_secs() < 60, "elapsed {}s", elapsed.as_secs());
+}
+
+#[test]
+fn eval_timeout_fails_the_suite_at_full_threshold() {
+    let context = test_context!();
+    context.ensure_home_server_auth_methods();
+    context.write_temp(
+        "slow/workflow.fabro",
+        "digraph W { start [shape=Mdiamond] exit [shape=Msquare] run [shape=parallelogram, script=\"sleep 120\", max_retries=0] start -> run -> exit }",
+    );
+    context.write_temp(
+        "slow/workflow.toml",
+        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n",
+    );
+    context.write_temp(
+        "suite.toml",
+        r#"_version = 1
+[suite]
+name = "smoke"
+pass_threshold = 1.0
+[[case]]
+name = "slow"
+workflow = "slow/workflow.toml"
+environment = "local"
+timeout = "3s"
+"#,
+    );
+    let suite = context.temp_dir.join("suite.toml");
+    let output = context
+        .command()
+        .args(["eval", suite.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("passed 0/1"), "{stdout}");
+}
