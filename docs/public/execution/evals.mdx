@@ -41,17 +41,30 @@ environment = "local"
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | Case name, unique within the suite. |
-| `workflow` | Yes | Path to the workflow TOML, relative to the suite file. |
+| `name` | Yes | Case name, unique within the suite. Lowercase letters, digits, and hyphens only. |
+| `workflow` | Yes | Path to the workflow TOML. |
 | `target_from` | No | Directory to use as the run workspace. Defaults to the suite file's directory. |
 | `goal_file` | No | Path to a file whose contents become the run goal. |
-| `inputs` | No | Key-value pairs passed as `[run.inputs]` to the workflow. |
+| `inputs` | No | Key-value pairs passed to the run as input overrides. Values are strings. |
 | `environment` | No | Named environment for agent tools. Overrides the `--environment` CLI flag. |
-| `timeout` | No | Per-case timeout (e.g. `"5m"`, `"30s"`). |
+| `timeout` | No | How long to wait for the case's run: a number of seconds, or a number with an `s`, `m`, or `h` suffix (e.g. `"90s"`, `"5m"`). Defaults to `"60m"`. |
 
-## Exit codes
+Relative paths resolve against the suite file's directory, and every path must exist when the suite loads. A suite needs at least one case.
 
-`fabro eval` exits 0 when pass rate >= `pass_threshold`, 1 otherwise. A case passes when its run completes with a successful outcome; any other result (failure, timeout, cancellation) counts as a failure.
+## Results and exit codes
+
+Cases run one at a time, in file order. Each ends with one of four results:
+
+| Result | Meaning |
+|---|---|
+| `passed` | The run succeeded. |
+| `failed` | The run reached any other terminal status. |
+| `timeout` | The run was still going when the case's `timeout` expired. `fabro eval` stops waiting; it does not cancel the run. |
+| `error` | The run could not be created or started. |
+
+The pass rate is the number of `passed` cases divided by the number of cases run. `fabro eval` exits 0 when the pass rate is at least `pass_threshold`, and 1 otherwise.
+
+Each run carries the labels `eval.suite=<suite name>` and `eval.case=<case name>`.
 
 ## Running a subset
 
@@ -63,4 +76,4 @@ fabro eval smoke.toml --only fix-add --only rename-method
 
 ## JSON output
 
-`--json` writes structured results to stdout. `--output report.json` writes them to a file instead. Both can be combined.
+`--json` prints the report as JSON on stdout in place of the per-case lines and summary. `--output report.json` also writes the same report to a file, with or without `--json`.
