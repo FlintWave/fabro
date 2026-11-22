@@ -15,7 +15,8 @@ use petri_execution::{Access, InvocationId, RunKey, RunStore};
 use petri_store::StoreError;
 
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunWorkspaces, Site,
+    BUDGET_EXHAUSTED_CLASS, CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunWorkspaces,
+    Site,
 };
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::workspace::{WorkspaceLookup, WorkspaceLookupError};
@@ -248,8 +249,8 @@ impl Planner {
     }
 }
 
-/// The reason a run with a failed checkpoint is reported failed, when it
-/// has one.
+/// The reason a run with a failed checkpoint or an exhausted budget is
+/// reported failed, when it has one.
 fn checkpoint_failure(executions: &[ExecutionInspection]) -> Option<String> {
     executions.iter().find_map(|execution| {
         execution
@@ -259,16 +260,28 @@ fn checkpoint_failure(executions: &[ExecutionInspection]) -> Option<String> {
             .iter()
             .find_map(|attempt| {
                 let failure = attempt.failure.as_ref()?;
-                (failure.class.as_str() == CHECKPOINT_FAILED_CLASS).then(|| {
-                    format!(
-                        "the checkpoint of {} (execution {} firing {} attempt {}) failed: {}",
-                        attempt.node.as_deref().unwrap_or("a stage"),
-                        execution.execution,
-                        attempt.firing,
-                        attempt.attempt,
+                let at = format!(
+                    "{} (execution {} firing {} attempt {})",
+                    attempt.node.as_deref().unwrap_or("a stage"),
+                    execution.execution,
+                    attempt.firing,
+                    attempt.attempt,
+                );
+                if failure.class.as_str() == CHECKPOINT_FAILED_CLASS {
+                    Some(format!(
+                        "the checkpoint of {at} failed: {}",
                         failure.message
-                    )
-                })
+                    ))
+                } else if failure.class.as_str() == BUDGET_EXHAUSTED_CLASS {
+                    // That stage's checkpoint succeeded; the budget refusal
+                    // ended the run.
+                    Some(format!(
+                        "the run budget was exhausted at {at}: {}",
+                        failure.message
+                    ))
+                } else {
+                    None
+                }
             })
     })
 }

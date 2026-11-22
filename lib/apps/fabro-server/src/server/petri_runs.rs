@@ -48,7 +48,7 @@ use fabro_interview::ControlInterviewer;
 use fabro_petri::artifacts::StoreArtifactWriter;
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
-use fabro_petri::hooks::HooksSpec;
+use fabro_petri::hooks::{HooksSpec, budget_seed_from_projection};
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::{Access, Digest, LogId, Record, RunKey, RunLogs, RunStore, StoreError};
 use fabro_petri::platform_records::SqlitePlatformRecords;
@@ -478,6 +478,11 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         &run_state.spec.settings.run,
         None,
     );
+    let budget_seed_micros = if matches!(mode, RunExecutionMode::Resume) {
+        budget_seed_from_projection(&run_state)
+    } else {
+        0
+    };
     let hooks = HooksSpec::for_run(
         Arc::new(SqlitePlatformRecords::new(Arc::clone(
             &state.stores.run_summaries,
@@ -485,7 +490,8 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         &run_state.spec.settings.run,
         Arc::new(StoreArtifactWriter::new(state.artifact_store.clone())),
     )
-    .with_source(source);
+    .with_source(source)
+    .with_budget_seed(budget_seed_micros);
     let runtime = runtime_spec(
         &state,
         &eligible,

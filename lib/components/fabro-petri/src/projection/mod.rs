@@ -38,6 +38,7 @@ use std::str::FromStr;
 
 use chrono::{DateTime, TimeZone as _, Utc};
 pub(crate) use coordinator::{finished_status, stall_message};
+pub(crate) use engine::attempt_usage;
 use fabro_store::StagePosition;
 use fabro_store::platform_records::StoredPlatformRecord;
 use fabro_types::{
@@ -52,7 +53,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::checkpoint::CHECKPOINT_FAILED_CLASS;
+use crate::checkpoint::{BUDGET_EXHAUSTED_CLASS, CHECKPOINT_FAILED_CLASS};
 
 /// One item the projector hands the fold, with its delivery sequence.
 pub enum Item<'a> {
@@ -402,6 +403,19 @@ pub fn checkpoint_failure(message: impl Into<String>) -> FinalizationFailure {
 #[must_use]
 pub fn is_checkpoint_failure(failure: &FinalizationFailure) -> bool {
     failure.code == CHECKPOINT_FAILED_CLASS
+}
+
+/// The required-finalization failure Fabro's hooks record when the run's
+/// budget was exhausted; its code is [`FailureReason::BudgetExhausted`]'s.
+#[must_use]
+pub fn budget_failure(message: impl Into<String>) -> FinalizationFailure {
+    FinalizationFailure::new(BUDGET_EXHAUSTED_CLASS, message)
+}
+
+/// Whether a required-finalization failure is an exhausted budget.
+#[must_use]
+pub fn is_budget_failure(failure: &FinalizationFailure) -> bool {
+    failure.code == BUDGET_EXHAUSTED_CLASS
 }
 
 /// The committed overall status and required-finalization failure message.

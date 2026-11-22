@@ -1639,6 +1639,115 @@ exclude_globs = ["**/lower/**"]
     }
 }
 
+mod run_budget {
+    //! Layer + resolver tests for `[run.budget]`.
+
+    use crate::SettingsLayer;
+    use crate::layers::Combine;
+
+    fn parse_settings(source: &str) -> SettingsLayer {
+        source
+            .parse::<SettingsLayer>()
+            .expect("fixture should parse via SettingsLayer")
+    }
+
+    #[test]
+    fn absent_resolves_to_none() {
+        let settings = super::workflow_settings_from_layer(SettingsLayer::default())
+            .expect("empty settings should resolve")
+            .run;
+
+        assert!(settings.budget.max_usd_micros.is_none());
+    }
+
+    #[test]
+    fn resolves_max_usd_to_micros() {
+        let settings = super::workflow_settings_from_toml(
+            r"
+_version = 1
+
+[run.budget]
+max_usd = 5.0
+",
+        )
+        .expect("settings should resolve")
+        .run;
+
+        assert_eq!(settings.budget.max_usd_micros, Some(5_000_000));
+    }
+
+    #[test]
+    fn zero_is_error() {
+        let error = super::workflow_settings_from_toml(
+            r"
+_version = 1
+
+[run.budget]
+max_usd = 0
+",
+        )
+        .expect_err("zero budget should not resolve");
+
+        let errors = match error {
+            crate::Error::Resolve { errors, .. } => errors,
+            other => panic!("expected structured resolve errors, got {other:#}"),
+        };
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            crate::ResolveError::Invalid { path, .. } if path == "run.budget.max_usd"
+        )));
+    }
+
+    #[test]
+    fn negative_is_error() {
+        let error = super::workflow_settings_from_toml(
+            r"
+_version = 1
+
+[run.budget]
+max_usd = -1.0
+",
+        )
+        .expect_err("negative budget should not resolve");
+
+        let errors = match error {
+            crate::Error::Resolve { errors, .. } => errors,
+            other => panic!("expected structured resolve errors, got {other:#}"),
+        };
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            crate::ResolveError::Invalid { path, .. } if path == "run.budget.max_usd"
+        )));
+    }
+
+    #[test]
+    fn higher_layer_overrides_lower_layer() {
+        let workflow = parse_settings(
+            r"
+_version = 1
+
+[run.budget]
+max_usd = 5.0
+",
+        );
+        let user = parse_settings(
+            r"
+_version = 1
+
+[run.budget]
+max_usd = 10.0
+",
+        );
+        let merged = workflow.combine(user);
+
+        let settings = super::workflow_settings_from_layer(merged)
+            .expect("merged settings should resolve")
+            .run;
+
+        assert_eq!(settings.budget.max_usd_micros, Some(5_000_000));
+    }
+}
+
 mod run_agent_mcps {
     //! Layer + resolver tests for `[run.agent.mcps]`: same-key replacement
     //! across layers (`StickyMap`) and honoring `enabled = false`.

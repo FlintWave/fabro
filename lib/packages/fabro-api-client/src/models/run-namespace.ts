@@ -33,6 +33,9 @@ import type { RunAgentSettings } from './run-agent-settings';
 import type { RunBranchSettings } from './run-branch-settings';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RunBudgetSettings } from './run-budget-settings';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunCheckpointSettings } from './run-checkpoint-settings';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -74,6 +77,7 @@ export interface RunNamespace {
     'git': RunGitSettings;
     'execution': RunExecutionSettings;
     'checkpoint': RunCheckpointSettings;
+    'budget': RunBudgetSettings;
     'clone': RunCloneSettings;
     'run_branch': RunBranchSettings;
     'environment': RunEnvironmentSettings;

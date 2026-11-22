@@ -32,6 +32,7 @@ pub struct RunNamespace {
     pub git:           RunGitSettings,
     pub execution:     RunExecutionSettings,
     pub checkpoint:    RunCheckpointSettings,
+    pub budget:        RunBudgetSettings,
     pub clone:         RunCloneSettings,
     pub run_branch:    RunBranchSettings,
     pub environment:   RunEnvironmentSettings,
@@ -60,6 +61,7 @@ impl Default for RunNamespace {
             git:           RunGitSettings::default(),
             execution:     RunExecutionSettings::default(),
             checkpoint:    RunCheckpointSettings::default(),
+            budget:        RunBudgetSettings::default(),
             clone:         RunCloneSettings::default(),
             run_branch:    RunBranchSettings::default(),
             environment:   RunEnvironmentSettings::default(),
@@ -900,6 +902,12 @@ impl Default for RunCheckpointSettings {
             commit_timeout_ms: default_checkpoint_commit_timeout_ms(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RunBudgetSettings {
+    pub max_usd_micros: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -39,9 +39,10 @@ pub use run::{
     EnvironmentSettings, GitAuthorSettings, HookDefinition, HookType, InterviewProviderSettings,
     McpServerRef, McpServerSettings, McpTransport, NotificationProviderSettings,
     NotificationRouteSettings, PullRequestSettings, ResolvedMcpEntry, RunAgentSettings,
-    RunCheckpointSettings, RunEnvironmentSettings, RunExecutionSettings, RunGitSettings, RunGoal,
-    RunIntegrationsGithubSettings, RunIntegrationsSettings, RunInterviewsSettings,
-    RunModelControls, RunModelSettings, RunNamespace, RunScmSettings, ScmGitHubSettings, TlsMode,
+    RunBudgetSettings, RunCheckpointSettings, RunEnvironmentSettings, RunExecutionSettings,
+    RunGitSettings, RunGoal, RunIntegrationsGithubSettings, RunIntegrationsSettings,
+    RunInterviewsSettings, RunModelControls, RunModelSettings, RunNamespace, RunScmSettings,
+    ScmGitHubSettings, TlsMode,
 };
 pub use server::{
     GithubIntegrationSettings, IntegrationWebhooksSettings, LogDestination, ObjectStoreSettings,

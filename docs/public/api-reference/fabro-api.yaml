@@ -15849,6 +15849,7 @@ components:
         - git
         - execution
         - checkpoint
+        - budget
         - clone
         - run_branch
         - environment
@@ -15883,6 +15884,8 @@ components:
           $ref: "#/components/schemas/RunExecutionSettings"
         checkpoint:
           $ref: "#/components/schemas/RunCheckpointSettings"
+        budget:
+          $ref: "#/components/schemas/RunBudgetSettings"
         clone:
           $ref: "#/components/schemas/RunCloneSettings"
         run_branch:
@@ -16061,6 +16064,15 @@ components:
             commits never run local Git commit hooks: the sandbox driver
             disables repository hooks on every git command it runs. Does not
             affect Fabro `[[run.hooks]]`. Defaults to false.
+
+    RunBudgetSettings:
+      type: object
+      required: [max_usd_micros]
+      properties:
+        max_usd_micros:
+          type: ["integer", "null"]
+          format: uint64
+          description: Spend cap in whole micro-dollars. Null when unset.
 
     RunCloneSettings:
       type: object

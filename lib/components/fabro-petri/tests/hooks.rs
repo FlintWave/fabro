@@ -23,12 +23,13 @@ use fabro_petri::artifacts::StoreArtifactWriter;
 use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces, Site,
+    BUDGET_EXHAUSTED_CLASS, CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces,
+    Site,
 };
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
 use fabro_petri::fork;
-use fabro_petri::hooks::{HooksSpec, Publication, RunPublisher};
+use fabro_petri::hooks::{FabroHooks, HooksSpec, Publication, RunPublisher};
 use fabro_petri::platform_records::{PlatformRecordError, PlatformRecords};
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::prune::{self, PruneRequest};
@@ -42,6 +43,7 @@ use fabro_types::settings::run::{
 };
 use fabro_types::{GitIdentitySource, RunId, SandboxProviderKind};
 use object_store::local::LocalFileSystem;
+use object_store::memory::InMemory;
 use petri_execution::inspect::{self, RunInspection};
 use petri_store::{Access, MemoryRunStore, RunKey, RunStore as _};
 use tokio::process::Command;
@@ -138,20 +140,22 @@ impl Harness {
 
     fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
         HooksSpec {
-            records:         if self.fail_run_diff {
+            records:            if self.fail_run_diff {
                 Arc::new(RejectRunDiff(self.records.clone()))
             } else {
                 self.records.clone()
             },
-            git:             RunGitSettings {
+            git:                RunGitSettings {
                 host_workspaces: *provider == SandboxProviderKind::LOCAL && !self.sandboxed,
                 ..RunGitSettings::default()
             },
-            artifacts:       self.artifacts.clone(),
-            test_gates:      None,
-            artifact_writer: Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
-            source:          self.source.clone(),
-            publisher:       self.publisher.clone(),
+            artifacts:          self.artifacts.clone(),
+            test_gates:         None,
+            artifact_writer:    Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
+            source:             self.source.clone(),
+            publisher:          self.publisher.clone(),
+            budget:             None,
+            budget_seed_micros: 0,
         }
     }
 
@@ -803,8 +807,342 @@ async fn a_failed_checkpoint_ends_the_run_with_no_route() {
     );
 }
 
-/// The two ends of recovery that need no crash: a run the store never held
-/// starts over, and a run that finished has nothing to bring back.
+/// The budget workflow: two agent stages the scripted model prices, then a
+/// route out of the second that an exhausted budget must refuse.
+const BUDGET_WORKFLOW: &str = r#"digraph Hooks {
+  graph [goal="Check the budget", backend="api", default_max_retries=0]
+  start [shape=Mdiamond]
+  exit [shape=Msquare]
+  cheap [shape=box, prompt="Write cheap.txt", model="test/model"]
+  expensive [shape=box, prompt="Write expensive.txt", model="test/model"]
+  next [shape=parallelogram, script="echo next > next.txt"]
+  start -> cheap -> expensive -> next -> exit
+}
+"#;
+
+/// One run of [`BUDGET_WORKFLOW`] against the scripted model, its stages
+/// priced 400 and 700 micro-dollars, under a spend cap of `budget`
+/// micro-dollars when set.
+async fn budgeted_run(harness: &Harness, budget: Option<u64>) -> engine::RunOutcome {
+    use pebble_coding_agent::test_support::{
+        ScriptedCall, scripted_client, text_response, tool_call_response, with_cost,
+    };
+    use serde_json::json;
+
+    /// The scripted exchanges for one agent stage: a shell call that writes
+    /// the stage's file, then the final answer; the pair priced
+    /// `usd_micros`.
+    fn priced_stage(file: &str, usd_micros: u64) -> Vec<ScriptedCall> {
+        vec![
+            ScriptedCall::response(with_cost(
+                tool_call_response(
+                    "shell",
+                    "write",
+                    json!({"command": format!("echo priced > {file}")}),
+                ),
+                usd_micros,
+            )),
+            ScriptedCall::response(with_cost(text_response("wrote it"), 0)),
+        ]
+    }
+
+    let (client, _provider) = scripted_client(
+        priced_stage("cheap.txt", 400)
+            .into_iter()
+            .chain(priced_stage("expensive.txt", 700))
+            .collect(),
+    );
+    let runtime = RuntimeSpec {
+        model_client: Some(client),
+        ..RuntimeSpec::default()
+    };
+    let (interviewer, observers) = no_questions();
+    let mut hooks = harness.hooks(&SandboxProviderKind::LOCAL);
+    hooks.budget = budget;
+    let request = RunRequest {
+        run_id: harness.run_id.to_string(),
+        run_dir: harness.run_dir.clone(),
+        execution: Execution::Start(support::admit(
+            &[
+                ("workflow.fabro", BUDGET_WORKFLOW),
+                ("workflow.toml", SETTINGS),
+            ],
+            Launch::default(),
+            &runtime,
+        )),
+        store: Arc::clone(&harness.store) as Arc<dyn petri_store::RunStore>,
+        runtime,
+        provider: SandboxProviderKind::LOCAL,
+        resources: EnvironmentResourcesSettings::default(),
+        network: EnvironmentNetworkSettings::default(),
+        cancel: CancellationToken::new(),
+        controls: RunControls::new(),
+        interviewer,
+        observers,
+        secrets: None,
+        blobs: Some(Arc::clone(&harness.blobs) as Arc<dyn Blobs>),
+        hooks: Some(hooks),
+    };
+    engine::run(request).await.expect("the run executes")
+}
+
+/// The stages of a finished run and the contents of the run branch's
+/// workspace, for the budget assertions.
+async fn budget_stage_statuses(harness: &Harness) -> Vec<(String, String)> {
+    let inspection = harness.inspection().await;
+    stages(&inspection)
+}
+
+/// A cap of 1000 micro-dollars: the stage costing 400 finishes normally
+/// and its route is taken; the second stage's 700 closes the run over the
+/// cap, so its outcome becomes a `budget_exhausted` failure, the run is
+/// cancelled, no route runs, and the checkpoint taken before the check
+/// keeps the stage's files on the run branch.
+#[tokio::test]
+async fn an_exhausted_budget_fails_the_stage_and_ends_the_run_with_no_route() {
+    let harness = Harness::new().await;
+    let outcome = budgeted_run(&harness, Some(1000)).await;
+    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
+    let failure = outcome
+        .failure
+        .clone()
+        .expect("the run failed with a reason");
+    assert!(
+        failure.contains("run budget exhausted: spent $0.001100 of $0.001000"),
+        "400 then 600 of the 1000-micro-dollar cap: {failure}"
+    );
+
+    let inspection = harness.inspection().await;
+    let committed = inspection
+        .finalization_failure
+        .clone()
+        .expect("the finish commits the budget failure");
+    assert_eq!(committed.code, BUDGET_EXHAUSTED_CLASS);
+    assert_eq!(stages(&inspection), vec![
+        ("start".to_string(), "success".to_string()),
+        ("cheap".to_string(), "success".to_string()),
+        ("expensive".to_string(), "failure".to_string()),
+    ]);
+    let attempts: Vec<_> = inspection
+        .executions
+        .iter()
+        .filter_map(|execution| execution.engine.as_ref())
+        .flat_map(|engine| engine.attempts.iter())
+        .collect();
+    let expensive = attempts
+        .iter()
+        .find(|attempt| attempt.node.as_deref() == Some("expensive"))
+        .expect("the expensive stage finished");
+    assert_eq!(
+        expensive
+            .failure
+            .as_ref()
+            .map(|failure| failure.class.as_str()),
+        Some(BUDGET_EXHAUSTED_CLASS),
+        "{expensive:?}"
+    );
+
+    // Its checkpoint landed before the budget check, so its files are on
+    // the run branch under the outcome the step reported; no route ran.
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let run_id = harness.run_id.to_string();
+    let commits = commits(&path).await;
+    assert_eq!(
+        commits.last().map(|(_, subject, _)| subject.as_str()),
+        Some(format!("fabro({run_id}): expensive (success)").as_str()),
+        "{commits:?}"
+    );
+    assert_eq!(
+        git(&path, &["show", "HEAD:expensive.txt"]).await,
+        "priced",
+        "the refused stage's files are in its checkpoint"
+    );
+    assert!(
+        !fs::try_exists(path.join("next.txt")).await.expect("exists"),
+        "no route was taken"
+    );
+    // The refused stage's transition is refused along with its routes, so
+    // only the earlier stages hold checkpoint records.
+    assert_eq!(
+        harness.checkpoints().len(),
+        2,
+        "{:?}",
+        harness.checkpoints()
+    );
+
+    // A restart finds the budget failure and reports the run failed.
+    let recovery = harness.recover().await;
+    assert!(
+        matches!(&recovery, Recovery::Failed { reason } if reason.contains("budget was exhausted")),
+        "{recovery:?}"
+    );
+}
+
+/// With no cap, the same stages finish and the run succeeds.
+#[tokio::test]
+async fn without_a_cap_nothing_changes() {
+    let harness = Harness::new().await;
+    let outcome = budgeted_run(&harness, None).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert_eq!(budget_stage_statuses(&harness).await, vec![
+        ("start".to_string(), "success".to_string()),
+        ("cheap".to_string(), "success".to_string()),
+        ("expensive".to_string(), "success".to_string()),
+        ("next".to_string(), "success".to_string()),
+        ("exit".to_string(), "success".to_string()),
+    ]);
+    assert_eq!(harness.checkpoints().len(), 5);
+}
+
+/// An attempt whose result is prepared twice — the hook retried for the
+/// same checkpoint key, as after a crash between the checkpoint commit and
+/// its record — is counted toward the cap once: the second preparation adds
+/// nothing and does not trip the budget. A different attempt does count,
+/// and taking the total to the cap fails it.
+#[tokio::test]
+async fn an_attempt_prepared_twice_for_one_checkpoint_key_is_counted_once() {
+    use fabro_petri::artifacts::StoreArtifactWriter;
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
+    use petri_execution::InvocationId;
+    use petri_runtime::driver::lifecycle::{
+        ExecutionHooks, HookContext, PrepareResult, ResultOrigin,
+    };
+    use petri_runtime::driver::{BranchRole, FiringView};
+    use petri_runtime::ir::{
+        Attempt, ExecutionId, FiringId, Generation, Node, NodeId, Outcome, RunContext, ScopeId,
+        Status, StepRef,
+    };
+    use serde_json::Value;
+
+    struct NoHooks;
+    impl ExecutionHooks for NoHooks {}
+
+    fn priced_view(firing: u64, attempt: u32) -> Arc<FiringView> {
+        let scope = ScopeId::new(0);
+        Arc::new(FiringView {
+            firing: FiringId::new(firing),
+            attempt: Attempt::new(attempt),
+            generation: Generation::ZERO,
+            node: Arc::new(Node::new(
+                NodeId::new(0),
+                "priced",
+                scope,
+                StepRef::new("prompt", Value::Null),
+            )),
+            visit: 1,
+            scope,
+            inputs: Vec::new(),
+            config: None,
+            context: RunContext::new(),
+            branch: BranchRole::None,
+        })
+    }
+
+    /// A successful outcome the metrics price at `usd_micros` micro-dollars,
+    /// as a prompt stage's usage reports it.
+    fn priced_result(view: &Arc<FiringView>, usd_micros: u64) -> PrepareResult {
+        let mut outcome = Outcome::new(Status::Success, Value::Null);
+        outcome.metrics.custom.insert(
+            "prompt.usage".into(),
+            serde_json::to_value(Usage {
+                tokens: TokenCounts::default(),
+                cost:   Some(Cost {
+                    usd_micros,
+                    source: CostSource::Catalog,
+                }),
+            })
+            .expect("usage serializes"),
+        );
+        PrepareResult {
+            view: Arc::clone(view),
+            outcome,
+            origin: ResultOrigin::Step,
+            will_retry: false,
+            exhausted: true,
+        }
+    }
+
+    let root = tempfile::tempdir().expect("a temp dir");
+    let run_id = RunId::new();
+    let spec = HooksSpec {
+        records:            Arc::new(MemoryPlatformRecords::new()),
+        git:                RunGitSettings {
+            // Checkpointing is not under test here; the budget check runs
+            // after it either way.
+            enabled: false,
+            ..RunGitSettings::default()
+        },
+        artifacts:          Vec::new(),
+        test_gates:         None,
+        artifact_writer:    Arc::new(StoreArtifactWriter::new(ArtifactStore::new(
+            Arc::new(InMemory::new()),
+            "budget-test",
+        ))),
+        source:             None,
+        publisher:          None,
+        budget:             Some(1000),
+        budget_seed_micros: 0,
+    };
+    let hooks = FabroHooks::new(
+        spec,
+        Arc::new(NoHooks),
+        run_id,
+        RunKey::new(run_id.to_string()),
+        root.path().to_path_buf(),
+        Arc::new(MemoryRunStore::new()),
+        false,
+        None,
+    );
+
+    let context = HookContext::new(
+        RunKey::new(run_id.to_string()),
+        InvocationId::ROOT,
+        ExecutionId::new(0),
+    );
+    let view = priced_view(1, 1);
+
+    // First preparation: 700 of the 1000-micro-dollar cap counts and the
+    // result passes through unchanged.
+    let first = hooks
+        .prepare_result(&context, priced_result(&view, 700))
+        .await
+        .expect("the first preparation succeeds");
+    assert!(first.adjustment.status.is_none(), "{:?}", first.adjustment);
+
+    // The same checkpoint key again: not counted, still unchanged. Counted
+    // twice, 700 + 700 would reach the cap and fail the attempt.
+    let again = hooks
+        .prepare_result(&context, priced_result(&view, 700))
+        .await
+        .expect("the retried preparation succeeds");
+    assert!(
+        again.adjustment.status.is_none(),
+        "prepared twice, counted once: {:?}",
+        again.adjustment
+    );
+    assert!(hooks.budget_failure().is_none());
+
+    // A different attempt counts: 700 + 700 reaches the cap.
+    let retried = hooks
+        .prepare_result(&context, priced_result(&priced_view(1, 2), 700))
+        .await
+        .expect("the next attempt's preparation succeeds");
+    assert!(matches!(
+        retried.adjustment.status,
+        Some(Status::Failure(ref info))
+            if info.class.as_str() == BUDGET_EXHAUSTED_CLASS
+    ));
+    assert_eq!(
+        retried.adjustment.reason.as_deref(),
+        Some("run budget exhausted: spent $0.001400 of $0.001000"),
+        "1400 micro-dollars of the 1000 cap, rendered with two decimals"
+    );
+    assert_eq!(
+        hooks.budget_failure().as_deref(),
+        Some("run budget exhausted: spent $0.001400 of $0.001000")
+    );
+}
 #[tokio::test]
 async fn recovery_starts_an_unknown_run_and_resumes_a_finished_one() {
     let harness = Harness::new().await;

@@ -351,6 +351,7 @@ export * from './run-artifact';
 export * from './run-artifact-entry';
 export * from './run-artifact-list-response';
 export * from './run-branch-settings';
+export * from './run-budget-settings';
 export * from './run-checkpoint';
 export * from './run-checkpoint-settings';
 export * from './run-client-provenance';

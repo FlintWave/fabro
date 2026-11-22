@@ -80,7 +80,7 @@ use fabro_petri::artifacts::ClientArtifactWriter;
 use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
-use fabro_petri::hooks::{HooksSpec, RunPublisher};
+use fabro_petri::hooks::{HooksSpec, RunPublisher, budget_seed_from_projection};
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
 use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
@@ -242,6 +242,11 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         worker.client.clone_for_reuse(),
     )
     .map(|publisher| Arc::new(publisher) as Arc<dyn RunPublisher>);
+    let budget_seed_micros = if matches!(worker.mode, RunWorkerMode::Resume) {
+        budget_seed_from_projection(&worker.run_state)
+    } else {
+        0
+    };
     let hooks = HooksSpec::for_run(
         Arc::clone(&records),
         &worker.run_state.spec.settings.run,
@@ -249,7 +254,8 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     )
     .with_source(source)
     .with_publisher(publisher)
-    .with_test_gates(test_checkpoint_gates());
+    .with_test_gates(test_checkpoint_gates())
+    .with_budget_seed(budget_seed_micros);
     let environment = &worker.run_state.spec.settings.run.environment;
     let request = RunRequest {
         run_id: run_id.to_string(),

@@ -2407,6 +2407,23 @@ app_id = "fixture-app-id"
     }
 
     #[test]
+    fn prepare_manifest_run_budget_from_settings_reaches_hooks() {
+        let server_settings = manifest_run_defaults(Some(&server_settings_fixture(
+            r"
+_version = 1
+
+[run.budget]
+max_usd = 5.00
+",
+        )));
+
+        let manifest = minimal_manifest();
+        let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
+
+        assert_eq!(prepared.settings.run.budget.max_usd_micros, Some(5_000_000));
+    }
+
+    #[test]
     fn prepare_manifest_preserves_bundled_workflow_metadata() {
         let mut manifest = minimal_manifest();
         manifest.workflows.get_mut("workflow.fabro").unwrap().config =

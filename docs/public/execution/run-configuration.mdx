@@ -488,6 +488,25 @@ commit_timeout = "30s"
 
 `exclude_globs` replaces across layers — the higher-precedence layer wins wholesale. `skip_git_hooks` and `commit_timeout` use normal override semantics: the highest layer that sets the field wins.
 
+### `[run.budget]`
+
+Stop a run once its accumulated spend reaches a cap.
+
+The cap is an operator setting: set it in the server's `settings.toml` (or another settings layer that carries `[run]`, such as a user's `settings.toml`). A `workflow.toml` cannot set it today.
+
+```toml title="settings.toml"
+[run.budget]
+max_usd = 5.00
+```
+
+| Field | Description |
+|---|---|
+| `max_usd` | Positive dollar amount. Zero, negative, NaN, or infinite values are a configuration error. |
+
+The cap is evaluated at stage boundaries, after a stage finishes and its checkpoint commit lands, so a single long stage can overshoot it; pair it with node `timeout` to bound that. The accumulated total includes every finished stage attempt, including sub-agent sessions, and is carried across a resume — resuming does not reset it. Retrying or forking into a new run starts from zero.
+
+Absence of `[run.budget]` disables the cap.
+
 ### `[run.inputs]`
 
 Define inputs that are rendered into final workflow string attributes. See [Variables](/workflows/variables) for the full reference.

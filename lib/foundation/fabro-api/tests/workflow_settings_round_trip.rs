@@ -99,6 +99,26 @@ skip_git_hooks = true
 }
 
 #[test]
+fn workflow_settings_json_includes_run_budget_max_usd_micros() {
+    let settings = workflow_settings_from_toml(
+        r#"
+_version = 1
+
+[run.budget]
+max_usd = 5.0
+"#,
+    );
+
+    let json = serde_json::to_value(&settings).expect("workflow settings should serialize");
+    assert_eq!(json["run"]["budget"]["max_usd_micros"], 5_000_000);
+
+    let round_trip: ApiWorkflowSettings =
+        serde_json::from_value(json).expect("workflow settings should deserialize");
+    assert_eq!(round_trip, settings);
+    assert_eq!(round_trip.run.budget.max_usd_micros, Some(5_000_000));
+}
+
+#[test]
 fn workflow_settings_default_run_checkpoint_skip_git_hooks_is_false() {
     let settings = workflow_settings_from_toml("_version = 1\n");
     let json = serde_json::to_value(&settings).expect("workflow settings should serialize");

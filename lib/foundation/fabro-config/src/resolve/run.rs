@@ -7,10 +7,10 @@ use fabro_types::settings::run::{
     ArtifactsSettings, GitAuthorSettings, HookDefinition, HookType, InterviewProviderSettings,
     McpServerSettings, McpTransport, MergeStrategy, NotificationProviderSettings,
     NotificationRouteSettings, PullRequestSettings, ResolvedMcpEntry, RunAgentSettings,
-    RunBranchSettings, RunCheckpointSettings, RunCloneSettings, RunExecutionSettings,
-    RunGitSettings, RunGoal, RunIntegrationsGithubSettings, RunIntegrationsSettings,
-    RunInterviewsSettings, RunModelControls, RunModelSettings, RunNamespace, RunScmSettings,
-    ScmGitHubSettings, TlsMode,
+    RunBranchSettings, RunBudgetSettings, RunCheckpointSettings, RunCloneSettings,
+    RunExecutionSettings, RunGitSettings, RunGoal, RunIntegrationsGithubSettings,
+    RunIntegrationsSettings, RunInterviewsSettings, RunModelControls, RunModelSettings,
+    RunNamespace, RunScmSettings, ScmGitHubSettings, TlsMode,
 };
 use fabro_util::workspace_glob::WorkspaceGlob;
 
@@ -18,10 +18,10 @@ use super::{ResolveError, resolve_run_environment};
 use crate::{
     EnvironmentLayer, HookAgentMarker, HookEntry, HookTlsMode, InterviewProviderLayer,
     InterviewsLayer, McpEntryLayer, MergeMap, ModelRefOrSplice, NotificationProviderLayer,
-    NotificationRouteLayer, RunAgentLayer, RunArtifactsLayer, RunCheckpointLayer, RunCloneLayer,
-    RunExecutionLayer, RunGitLayer, RunGoalLayer, RunIntegrationsGithubLayer, RunIntegrationsLayer,
-    RunLayer, RunModelLayer, RunPullRequestLayer, RunRunBranchLayer, RunScmLayer, StickyMap,
-    StringOrSplice,
+    NotificationRouteLayer, RunAgentLayer, RunArtifactsLayer, RunBudgetLayer, RunCheckpointLayer,
+    RunCloneLayer, RunExecutionLayer, RunGitLayer, RunGoalLayer, RunIntegrationsGithubLayer,
+    RunIntegrationsLayer, RunLayer, RunModelLayer, RunPullRequestLayer, RunRunBranchLayer,
+    RunScmLayer, StickyMap, StringOrSplice,
 };
 
 pub fn resolve_run(
@@ -53,6 +53,7 @@ pub fn resolve_run(
         git: resolve_git(layer.git.as_ref()),
         execution: resolve_execution(layer.execution.as_ref()),
         checkpoint: resolve_checkpoint(layer.checkpoint.as_ref()),
+        budget: resolve_budget(layer.budget.as_ref(), errors),
         clone,
         run_branch,
         environment: resolve_run_environment(layer.environment.as_ref(), environments, errors),
@@ -291,6 +292,39 @@ fn resolve_checkpoint(checkpoint: Option<&RunCheckpointLayer>) -> RunCheckpointS
                 |timeout| timeout.as_millis(),
             ),
     }
+}
+
+fn resolve_budget(
+    budget: Option<&RunBudgetLayer>,
+    errors: &mut Vec<ResolveError>,
+) -> RunBudgetSettings {
+    let max_usd = budget.and_then(|budget| budget.max_usd);
+    let max_usd_micros = match max_usd {
+        None => None,
+        Some(value) => {
+            if !value.is_finite() || value <= 0.0 {
+                errors.push(ResolveError::Invalid {
+                    path:   "run.budget.max_usd".to_string(),
+                    reason: "run.budget.max_usd must be a positive, finite number".to_string(),
+                });
+                None
+            } else {
+                let micros = (value * 1_000_000.0).round();
+                // Convert without a lossy float-to-int cast by parsing the
+                // (already rounded, finite, positive) textual value.
+                if let Ok(parsed) = micros.to_string().parse::<u64>() {
+                    Some(parsed)
+                } else {
+                    errors.push(ResolveError::Invalid {
+                        path:   "run.budget.max_usd".to_string(),
+                        reason: "run.budget.max_usd is too large to represent".to_string(),
+                    });
+                    None
+                }
+            }
+        }
+    };
+    RunBudgetSettings { max_usd_micros }
 }
 
 fn resolve_clone(

@@ -405,6 +405,25 @@ fn completion(status: &Status, at: DateTime<Utc>) -> StageCompletion {
     }
 }
 
+/// The total usage of one finished attempt: the root usage plus every
+/// descendant session's usage, or the prompt usage, or zero.
+pub(crate) fn attempt_usage(metrics: &Metrics) -> Usage {
+    let custom = &metrics.custom;
+    if let Some(root) = usage_of(custom.get("pebble.usage")) {
+        let descendants: Vec<Usage> = custom
+            .get("pebble.subagents")
+            .and_then(|subagents| subagents.get("sessions"))
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(|sessions| sessions.values().filter_map(account))
+            .map(|(_, usage)| usage)
+            .collect();
+        descendants.into_iter().fold(root, Usage::saturating_add)
+    } else {
+        usage_of(custom.get("prompt.usage")).unwrap_or_default()
+    }
+}
+
 /// The finished attempt's metrics onto its stage: the timing and the usage
 /// the backend reported.
 fn apply_metrics(stage: &mut StageProjection, metrics: &Metrics) {
@@ -451,9 +470,7 @@ fn apply_agent_usage(stage: &mut StageProjection, metrics: &Metrics, root: Usage
         .flat_map(|sessions| sessions.values().filter_map(account))
         .collect();
 
-    stage.usage = descendants
-        .iter()
-        .fold(root, |total, (_, usage)| total.saturating_add(*usage));
+    stage.usage = attempt_usage(metrics);
     let mut by_model: Vec<ModelUsage> = Vec::new();
     for (model, usage) in root_rows.into_iter().chain(descendants) {
         let Some(model) = model.or_else(|| stage.model.clone()) else {
@@ -731,5 +748,44 @@ mod tests {
         for status in [&failed, &timed_out, &unexplained] {
             assert_eq!(stage_outcome(status), StageOutcome::PartiallySucceeded);
         }
+    }
+
+    #[test]
+    fn attempt_usage_sums_an_agent_and_two_subagents() {
+        let root = usage(20_000, 145_800);
+        let child = usage(40_000, 291_600);
+        let grandchild = usage(60_000, 437_400);
+        let mut metrics = Metrics::default();
+        metrics.custom.insert("pebble.usage".into(), json!(root));
+        let subagents = subagents(&[
+            ("child", "root", "anthropic", "claude-sonnet-5", child),
+            (
+                "grandchild",
+                "child",
+                "anthropic",
+                "claude-sonnet-5",
+                grandchild,
+            ),
+        ]);
+        // put sessions only
+        metrics.custom.insert("pebble.subagents".into(), subagents);
+        // attempt_usage reads pebble.subagents.sessions, ignores top-level usage
+        let total = attempt_usage(&metrics);
+        assert_eq!(total, usage(120_000, 874_800));
+    }
+
+    #[test]
+    fn attempt_usage_returns_prompt_usage_as_is() {
+        let mut metrics = Metrics::default();
+        metrics
+            .custom
+            .insert("prompt.usage".into(), json!(usage(10_000, 72_900)));
+        assert_eq!(attempt_usage(&metrics), usage(10_000, 72_900));
+    }
+
+    #[test]
+    fn attempt_usage_is_zero_without_usage() {
+        let metrics = Metrics::default();
+        assert_eq!(attempt_usage(&metrics), Usage::default());
     }
 }

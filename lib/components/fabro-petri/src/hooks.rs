@@ -91,7 +91,7 @@ use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, OperationKey, RunBranchRecord,
     RunDiffRecord, RunNoticeRecord,
 };
-use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
+use fabro_store::{PlatformRecord, PlatformRecordKind, RunProjection, StagePosition};
 use fabro_types::settings::run::RunNamespace;
 use fabro_types::{
     ArtifactSource, BlobHash, DiffSummary, GitIdentity, RunId, RunNoticeCode, RunNoticeLevel,
@@ -117,8 +117,8 @@ use tracing::{debug, info, warn};
 use crate::artifacts::{ArtifactWriteError, ArtifactWriter};
 use crate::blobs::Blobs;
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
-    RunWorkspaces, Site, Snapshot, WorkspaceDiff,
+    BUDGET_EXHAUSTED_CLASS, CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS,
+    RunGitSettings, RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
 use crate::fork::{self, ForkError};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
@@ -234,22 +234,27 @@ impl HookError {
 /// What Fabro's hooks need beside the run: where the platform records go,
 /// the run's Git settings, and which files are the run's artifacts.
 pub struct HooksSpec {
-    pub records:         Arc<dyn PlatformRecords>,
-    pub git:             RunGitSettings,
+    pub records:            Arc<dyn PlatformRecords>,
+    pub git:                RunGitSettings,
     /// The `[run.artifacts] include` patterns: which files of a stage's
     /// workspace are collected after the stage.
-    pub artifacts:       Vec<String>,
+    pub artifacts:          Vec<String>,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
-    pub test_gates:      Option<PathBuf>,
+    pub test_gates:         Option<PathBuf>,
     /// Where captured workspace files go.
-    pub artifact_writer: Arc<dyn ArtifactWriter>,
+    pub artifact_writer:    Arc<dyn ArtifactWriter>,
     /// Where a Git target's workspaces are checked out from, when a fresh
     /// run first acquires them. `None` for a run with no remote repository.
-    pub source:          Option<RunSource>,
+    pub source:             Option<RunSource>,
     /// What a successful run's work does when it ends; `None` publishes
     /// nothing.
-    pub publisher:       Option<Arc<dyn RunPublisher>>,
+    pub publisher:          Option<Arc<dyn RunPublisher>>,
+    /// The run's spend cap in micro-dollars, when one is set.
+    pub budget:             Option<u64>,
+    /// The cost already spent before this run began, in micro-dollars
+    /// (resuming a run seeds the cap from its finished attempts).
+    pub budget_seed_micros: u64,
 }
 
 /// What a successful run hands its publisher when it ends: the run branch,
@@ -293,6 +298,8 @@ impl HooksSpec {
             artifact_writer,
             source: None,
             publisher: None,
+            budget: settings.budget.max_usd_micros,
+            budget_seed_micros: 0,
         }
     }
 
@@ -315,6 +322,28 @@ impl HooksSpec {
         self.test_gates = gates;
         self
     }
+
+    /// Seed the running spend total from a resumed run's finished stages.
+    #[must_use]
+    pub fn with_budget_seed(mut self, budget_seed_micros: u64) -> Self {
+        self.budget_seed_micros = budget_seed_micros;
+        self
+    }
+}
+
+/// The cost already spent before this run began, summed from its finished
+/// stages' recorded usage. A resume starts from this; a fresh run from zero.
+#[must_use]
+pub fn budget_seed_from_projection(projection: &RunProjection) -> u64 {
+    let mut total = 0u64;
+    for (_stage_id, stage) in projection.iter_stages() {
+        if stage.completion.is_none() {
+            continue;
+        }
+        let micros = stage.usage.cost.as_ref().map_or(0, |cost| cost.usd_micros);
+        total = total.saturating_add(micros);
+    }
+    total
 }
 
 /// A scope's sandbox environment as the hooks keep it: the workspace id
@@ -464,6 +493,14 @@ pub struct FabroHooks {
     scopes:             ScopeEnvs,
     /// The checkpoint failure that ended the run, when one did.
     failure:            Mutex<Option<String>>,
+    /// The run's spend cap, in micro-dollars, when one is set.
+    budget_cap:         Option<u64>,
+    /// The cost spent so far, in micro-dollars, saturating.
+    budget_total:       Mutex<u64>,
+    /// Attempts already counted toward the cap, keyed on their checkpoint key.
+    budget_counted:     Mutex<std::collections::HashSet<CheckpointKey>>,
+    /// The budget failure that ended the run, when one did.
+    budget_failure:     Mutex<Option<String>>,
     publisher:          Option<Arc<dyn RunPublisher>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
@@ -532,6 +569,10 @@ impl FabroHooks {
             },
             scopes: ScopeEnvs::default(),
             failure: Mutex::default(),
+            budget_cap: spec.budget,
+            budget_total: Mutex::new(spec.budget_seed_micros),
+            budget_counted: Mutex::default(),
+            budget_failure: Mutex::default(),
             publisher: spec.publisher,
             resumed,
             restore: OnceCell::new(),
@@ -552,6 +593,11 @@ impl FabroHooks {
     #[must_use]
     pub fn checkpoint_failure(&self) -> Option<String> {
         sync::lock(&self.failure).clone()
+    }
+
+    #[must_use]
+    pub fn budget_failure(&self) -> Option<String> {
+        sync::lock(&self.budget_failure).clone()
     }
 
     /// The run's workspaces on this host, as the hooks reach them.
@@ -1583,6 +1629,45 @@ fn is_checkpoint_failure(status: &Status) -> bool {
     matches!(status, Status::Failure(info) if info.class.as_str() == CHECKPOINT_FAILED_CLASS)
 }
 
+fn is_budget_exhausted(status: &Status) -> bool {
+    matches!(status, Status::Failure(info) if info.class.as_str() == BUDGET_EXHAUSTED_CLASS)
+}
+
+/// Format a micro-dollar amount for the spend-cap message: sub-cent amounts
+/// keep six decimals so they stay non-zero, larger amounts keep two.
+pub fn format_budget_usd(usd_micros: u64) -> String {
+    if usd_micros < 10_000 {
+        format!("${:.6}", usd_micros as f64 / 1_000_000.0)
+    } else {
+        format!("${:.2}", usd_micros as f64 / 1_000_000.0)
+    }
+}
+
+#[cfg(test)]
+mod format_budget_usd_tests {
+    use super::format_budget_usd;
+
+    #[test]
+    fn one_micro_dollar() {
+        assert_eq!(format_budget_usd(1), "$0.000001");
+    }
+
+    #[test]
+    fn nine_thousand_nine_hundred_ninety_nine_micro_dollars() {
+        assert_eq!(format_budget_usd(9_999), "$0.009999");
+    }
+
+    #[test]
+    fn ten_thousand_micro_dollars() {
+        assert_eq!(format_budget_usd(10_000), "$0.01");
+    }
+
+    #[test]
+    fn five_million_micro_dollars() {
+        assert_eq!(format_budget_usd(5_000_000), "$5.00");
+    }
+}
+
 #[async_trait::async_trait]
 impl ExecutionHooks for FabroHooks {
     async fn before_attempt(
@@ -1607,17 +1692,21 @@ impl ExecutionHooks for FabroHooks {
         };
         let original = request.outcome.status.clone();
         let origin = request.origin;
+        let metrics = request.outcome.metrics.clone();
         let mut prepared = self.inner.prepare_result(context, request).await?;
         let effective = prepared.adjustment.status.clone().unwrap_or(original);
         if matches!(effective, Status::Cancelled) {
             return Ok(prepared);
         }
-        match self
+        let checkpoint_ok = match self
             .snapshot(context, scope, key, &node, &effective, origin)
             .await
         {
-            Ok(Some(note)) => prepared.notes.push(note),
-            Ok(None) => {}
+            Ok(Some(note)) => {
+                prepared.notes.push(note);
+                true
+            }
+            Ok(None) => true,
             Err(error) => {
                 let message = error.render();
                 warn!(
@@ -1634,6 +1723,42 @@ impl ExecutionHooks for FabroHooks {
                     FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
                 ));
                 prepared.adjustment.reason = Some(message);
+                false
+            }
+        };
+        if checkpoint_ok {
+            if let Some(cap) = self.budget_cap {
+                let newly_counted = sync::lock(&self.budget_counted).insert(key);
+                if newly_counted {
+                    let usage = projection::attempt_usage(&metrics);
+                    let cost = usage.cost.map_or(0, |cost| cost.usd_micros);
+                    let spent = {
+                        let mut total = sync::lock(&self.budget_total);
+                        *total = total.saturating_add(cost);
+                        *total
+                    };
+                    if spent >= cap {
+                        let message = format!(
+                            "run budget exhausted: spent {} of {}",
+                            format_budget_usd(spent),
+                            format_budget_usd(cap)
+                        );
+                        warn!(
+                            run_id = %self.run_id,
+                            node,
+                            execution = key.execution,
+                            firing = key.firing,
+                            attempt = key.attempt,
+                            "run budget exhausted; the run ends"
+                        );
+                        self.fail_run(&message);
+                        *sync::lock(&self.budget_failure) = Some(message.clone());
+                        prepared.adjustment.status = Some(Status::Failure(
+                            FailureInfo::new(message.clone()).with_class(BUDGET_EXHAUSTED_CLASS),
+                        ));
+                        prepared.adjustment.reason = Some(message);
+                    }
+                }
             }
         }
         Ok(prepared)
@@ -1651,6 +1776,11 @@ impl ExecutionHooks for FabroHooks {
         if is_checkpoint_failure(&transition.outcome.status) {
             return Err(TransitionError::new(
                 "the stage's checkpoint commit failed; no route is taken",
+            ));
+        }
+        if is_budget_exhausted(&transition.outcome.status) {
+            return Err(TransitionError::new(
+                "the run's budget is exhausted; no route is taken",
             ));
         }
         let node = transition.view.node_name().to_owned();
@@ -1719,8 +1849,11 @@ impl ExecutionHooks for FabroHooks {
             warn!(run_id = %self.run_id, error = %message, "the run's diff was not recorded");
             message
         });
-        // A failed checkpoint fails the run whatever its execution status,
-        // and its work is never published.
+        // A failed checkpoint or an exhausted budget fails the run whatever
+        // its execution status, and its work is never published.
+        if let Some(message) = self.budget_failure() {
+            return Err(projection::budget_failure(message));
+        }
         if let Some(message) = self.checkpoint_failure() {
             return Err(projection::checkpoint_failure(message));
         }
@@ -1919,6 +2052,8 @@ mod tests {
                 artifact_writer,
                 source: None,
                 publisher: None,
+                budget: None,
+                budget_seed_micros: 0,
             },
             Arc::new(NoHooks),
             run_id,

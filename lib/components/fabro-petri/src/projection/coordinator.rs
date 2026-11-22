@@ -243,13 +243,19 @@ pub(crate) fn finished_status(
         "success" => RunStatus::Succeeded {
             reason: SuccessReason::Completed,
         },
-        "cancelled" if !finalization_failure.is_some_and(super::is_checkpoint_failure) => {
+        "cancelled"
+            if !finalization_failure.is_some_and(|f| {
+                super::is_checkpoint_failure(f) || super::is_budget_failure(f)
+            }) =>
+        {
             RunStatus::Failed {
                 reason: FailureReason::Cancelled,
             }
         }
         _ => RunStatus::Failed {
-            reason: if finalization_failure.is_some_and(super::is_publish_failure) {
+            reason: if finalization_failure.is_some_and(super::is_budget_failure) {
+                FailureReason::BudgetExhausted
+            } else if finalization_failure.is_some_and(super::is_publish_failure) {
                 FailureReason::PublishFailed
             } else {
                 FailureReason::WorkflowError

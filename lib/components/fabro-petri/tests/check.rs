@@ -213,6 +213,30 @@ async fn an_unknown_workflow_key_is_refused_and_named_in_workflow_toml() {
 }
 
 #[tokio::test]
+async fn a_workflow_toml_cannot_set_the_run_budget() {
+    let settings = format!("{SETTINGS}[run.budget]\nmax_usd = 5.00\n");
+    let request = request(
+        bundle(&[
+            ("workflow.fabro", COMMAND_WORKFLOW),
+            ("workflow.toml", &settings),
+        ]),
+        RuntimeSpec::default(),
+    );
+
+    let Err(CheckError::Rejected(diagnostics)) = check::check(&request) else {
+        panic!("a workflow TOML setting [run.budget] should be refused");
+    };
+
+    let error = diagnostics
+        .iter()
+        .find(|d| d.code == "unsupported.workflow_toml.key")
+        .unwrap_or_else(|| panic!("no unknown-key diagnostic in {diagnostics:?}"));
+    assert!(error.is_error());
+    assert!(error.message.contains("run.budget"), "{error:?}");
+    assert_eq!(error.file, "workflow.toml");
+}
+
+#[tokio::test]
 async fn the_project_settings_are_read_from_the_map() {
     let workflow = UNKNOWN_MODEL_WORKFLOW.replace(", model=\"no-such-model-9000\"", "");
     let request = request(

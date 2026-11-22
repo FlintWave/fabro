@@ -36,6 +36,8 @@ pub struct RunLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint:    Option<RunCheckpointLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget:        Option<RunBudgetLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clone:         Option<RunCloneLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_branch:    Option<RunRunBranchLayer>,
@@ -289,6 +291,14 @@ pub struct RunCheckpointLayer {
     /// Optional timeout for the per-node run-branch checkpoint commit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_timeout: Option<Duration>,
+}
+
+/// `[run.budget]` — run budget policy.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct RunBudgetLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_usd: Option<f64>,
 }
 
 /// `[run.clone]` — source workspace clone policy.

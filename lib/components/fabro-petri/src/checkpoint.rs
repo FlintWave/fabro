@@ -25,6 +25,9 @@ use crate::source::{RunSource, SourceRevision};
 /// the run, and terminal for a restart.
 pub const CHECKPOINT_FAILED_CLASS: &str = "checkpoint_failed";
 
+/// The failure class of a stage whose run budget was exhausted.
+pub const BUDGET_EXHAUSTED_CLASS: &str = "budget_exhausted";
+
 /// The effect kind of a checkpoint in its operation identity.
 pub const CHECKPOINT_EFFECT: &str = "checkpoint";
 

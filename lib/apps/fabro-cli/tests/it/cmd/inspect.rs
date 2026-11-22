@@ -146,6 +146,9 @@ fn inspect_resolves_selector_via_server_endpoint() {
                 "skip_git_hooks": false,
                 "commit_timeout_ms": 30000
               },
+              "budget": {
+                "max_usd_micros": null
+              },
               "clone": {
                 "enabled": true,
                 "depth": 100

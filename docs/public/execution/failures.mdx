@@ -13,7 +13,7 @@ When a node fails, Fabro classifies the failure into one of six categories. Thes
 |---|---|---|
 | `transient_infra` | Temporary infrastructure problem — likely to resolve on retry | Rate limits, timeouts, network errors, 5xx responses |
 | `deterministic` | Permanent failure — retrying won't help | Authentication errors, bad configuration, invalid requests |
-| `budget_exhausted` | Resource limit reached | Context length exceeded, token/turn limits, quota exhausted |
+| `budget_exhausted` | Resource limit reached | Context length exceeded, token/turn limits, quota exhausted, or the `[run.budget] max_usd` cap reached. Terminal. |
 | `compilation_loop` | Reserved for loop detection | — |
 | `canceled` | User or system cancellation | Cancel signal, abort |
 | `structural` | Reserved for scope enforcement | Write scope violations |
