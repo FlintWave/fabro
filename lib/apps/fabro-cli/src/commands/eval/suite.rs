@@ -1,23 +1,24 @@
-#![expect(clippy::absolute_paths, reason = "eval module uses crate paths")]
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::{fs, io};
 
 use serde::Deserialize;
+use toml::{self, de};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SuiteError {
-    #[error("could not read suite file {path}: {source}")]
+    #[error("could not read suite file {path}")]
     Read {
         path:   PathBuf,
         #[source]
-        source: std::io::Error,
+        source: io::Error,
     },
-    #[error("could not parse suite file {path}: {source}")]
+    #[error("could not parse suite file {path}")]
     Parse {
         path:   PathBuf,
         #[source]
-        source: toml::de::Error,
+        source: de::Error,
     },
     #[error("invalid suite: {0}")]
     Validation(String),
@@ -87,11 +88,17 @@ pub(crate) fn load_suite(path: &Path) -> Result<Suite, SuiteError> {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
-    let content = std::fs::read_to_string(path).map_err(|source| SuiteError::Read {
+    let content = fs::read_to_string(path).map_err(|source| SuiteError::Read {
         path: path.to_path_buf(),
         source,
     })?;
-    parse_suite_str(&content, &base_dir)
+    parse_suite_str(&content, &base_dir).map_err(|err| match err {
+        SuiteError::Parse { source, .. } => SuiteError::Parse {
+            path: path.to_path_buf(),
+            source,
+        },
+        other => other,
+    })
 }
 
 pub(crate) fn parse_suite_str(content: &str, base_dir: &Path) -> Result<Suite, SuiteError> {
@@ -100,7 +107,6 @@ pub(crate) fn parse_suite_str(content: &str, base_dir: &Path) -> Result<Suite, S
         source,
     })?;
 
-    // threshold range
     if !(0.0..=1.0).contains(&raw.suite.pass_threshold) {
         return Err(SuiteError::Validation(format!(
             "pass_threshold {} is out of range 0.0..=1.0",
@@ -108,8 +114,7 @@ pub(crate) fn parse_suite_str(content: &str, base_dir: &Path) -> Result<Suite, S
         )));
     }
 
-    // case names validation & uniqueness
-    let mut names = std::collections::BTreeSet::new();
+    let mut names = BTreeSet::new();
     if raw.cases.is_empty() {
         return Err(SuiteError::Validation(
             "suite must contain at least one case".into(),
@@ -137,7 +142,6 @@ pub(crate) fn parse_suite_str(content: &str, base_dir: &Path) -> Result<Suite, S
         }
     }
 
-    // resolve
     let mut cases = Vec::new();
     for c in raw.cases {
         let workflow = resolve_checked(base_dir, &c.workflow, "workflow")?;
@@ -156,12 +160,9 @@ pub(crate) fn parse_suite_str(content: &str, base_dir: &Path) -> Result<Suite, S
             Some(p) => Some(resolve_checked(base_dir, &p, "goal_file")?),
             None => None,
         };
-        // default 60m
         let timeout = c.timeout.unwrap_or_else(|| "60m".to_string());
         parse_duration(&timeout).map_err(SuiteError::Validation)?;
-        // inputs
         let inputs = c.inputs.unwrap_or_default();
-        // input string values already
         cases.push(SuiteCase {
             name: c.name,
             workflow,
@@ -221,13 +222,14 @@ pub(crate) fn parse_duration(s: &str) -> Result<Duration, String> {
 #[cfg(test)]
 #[expect(clippy::disallowed_methods, reason = "test infra")]
 mod tests {
-    use std::fs;
+    use std::{env, fs};
 
+    use fabro_util::error;
     use tempfile::tempdir;
 
     use super::*;
 
-    fn write(p: &std::path::Path, contents: &str) {
+    fn write(p: &Path, contents: &str) {
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).unwrap();
         }
@@ -269,9 +271,12 @@ foo = 1
 name = "c"
 workflow = "w.toml"
 "#;
-        // workflow missing, but unknown key at suite level caught first? parse may fail
-        // either.
-        assert!(parse_suite_str(content, dir.path()).is_err());
+        let err = parse_suite_str(content, dir.path()).unwrap_err();
+        let chain = error::collect_chain(&err);
+        assert!(
+            chain.iter().any(|s| s.contains("unknown field `foo`")),
+            "unexpected error: {chain:?}"
+        );
     }
 
     #[test]
@@ -367,8 +372,8 @@ workflow = "nope.toml"
         fs::write(base.join("w.toml"), "x").unwrap();
         fs::create_dir_all(base.join("repos")).unwrap();
         let cwd = tempdir().unwrap();
-        let old = std::env::current_dir().unwrap();
-        std::env::set_current_dir(cwd.path()).unwrap();
+        let old = env::current_dir().unwrap();
+        env::set_current_dir(cwd.path()).unwrap();
         let content = r#"
 [suite]
 name = "s"
@@ -377,12 +382,11 @@ name = "c"
 workflow = "w.toml"
 target_from = "repos"
 "#;
-        // create repos dir
         fs::create_dir_all(base.join("repos")).unwrap();
         let suite = parse_suite_str(content, &base).unwrap();
         assert_eq!(suite.cases[0].workflow, base.join("w.toml"));
         assert_eq!(suite.cases[0].target_from, base.join("repos"));
-        std::env::set_current_dir(old).unwrap();
+        env::set_current_dir(old).unwrap();
     }
 
     #[test]

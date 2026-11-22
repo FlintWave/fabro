@@ -1,20 +1,25 @@
-#![expect(clippy::absolute_paths, reason = "eval module uses crate paths")]
-use std::time::Instant;
+use std::collections::BTreeSet;
+use std::time::{Duration, Instant};
+use std::{fs, process};
 
 use anyhow::{Result, bail};
+use chrono::Utc;
+use fabro_client::Client;
+use fabro_types::{RunId, RunStatus};
+use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
+use tokio::time;
 
-use crate::args::EvalArgs;
+use crate::args::{EvalArgs, InputOverrideArgs, RunArgs};
 use crate::command_context::CommandContext;
-use crate::commands::run::create::create_run;
 use crate::commands::run::remote_workflow::Interruption;
-use crate::shared::{format_duration_ms, format_usd_micros, print_json_pretty};
+use crate::commands::run::{create, start};
+use crate::shared;
 mod report;
 mod suite;
 
-/// Grace period (seconds) `fabro eval` waits after cancelling a timed-out
-/// run for the run to reach a terminal status.
-const CANCEL_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(30);
+/// How long `fabro eval` waits for a cancelled run to stop.
+const CANCEL_GRACE_PERIOD: Duration = Duration::from_secs(30);
 
 #[expect(
     clippy::cast_possible_truncation,
@@ -23,9 +28,8 @@ const CANCEL_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(
 )]
 pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandContext) -> Result<()> {
     let suite_path = args.suite.clone();
-    let suite = suite::load_suite(&suite_path).map_err(|e| anyhow::anyhow!(e))?;
+    let suite = suite::load_suite(&suite_path).map_err(anyhow::Error::new)?;
 
-    // --only validation
     if !args.only.is_empty() {
         for name in &args.only {
             if !suite.cases.iter().any(|c| c.name == *name) {
@@ -36,8 +40,7 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
     let selected_cases: Vec<&suite::SuiteCase> = if args.only.is_empty() {
         suite.cases.iter().collect()
     } else {
-        let only_set: std::collections::BTreeSet<&str> =
-            args.only.iter().map(String::as_str).collect();
+        let only_set: BTreeSet<&str> = args.only.iter().map(String::as_str).collect();
         suite
             .cases
             .iter()
@@ -48,32 +51,24 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
         bail!("no cases selected");
     }
 
-    let started_at = chrono::Utc::now().to_rfc3339();
-    let _started_instant = Instant::now();
+    let started_at = Utc::now().to_rfc3339();
     let printer = base_ctx.printer();
     let mut case_reports = Vec::new();
 
     for case in selected_cases {
         let case_start = Instant::now();
-        // Build RunArgs
-        let mut run_args = build_run_args(args, case, &suite);
-        // environment override
+        let mut run_args = build_run_args(args);
         if let Some(env) = case.environment.as_ref().or(args.environment.as_ref()) {
             run_args.environment = Some(env.clone());
         }
-        // target_from
         run_args.target_from = Some(case.target_from.clone());
-        // goal_file
         if let Some(gf) = &case.goal_file {
             run_args.goal_file = Some(gf.clone());
         }
-        // workflow
         run_args.workflow = Some(case.workflow.clone());
-        // inputs
         for (k, v) in &case.inputs {
             run_args.inputs.values.push(format!("{k}={v}"));
         }
-        // labels
         run_args.label.push(format!("eval.suite={}", suite.name));
         run_args.label.push(format!("eval.case={}", case.name));
         run_args.detach = true;
@@ -81,12 +76,16 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
         let ctx = base_ctx.with_target(&run_args.target)?;
         let interruption = Interruption::for_run_args(&run_args);
         let run_result = interruption
-            .guard(Box::pin(create_run(&ctx, &run_args, styles, &interruption)))
+            .guard(Box::pin(create::create_run(
+                &ctx,
+                &run_args,
+                styles,
+                &interruption,
+            )))
             .await;
         let run_id = match run_result {
             Ok(cr) => cr.run_id,
             Err(err) => {
-                // error case
                 let report_case = report::CaseReport {
                     name:            case.name.clone(),
                     result:          report::CaseResult::Error,
@@ -96,21 +95,18 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
                         u64::try_from(case_start.elapsed().as_millis()).unwrap_or(u64::MAX),
                     ),
                     cost_usd_micros: None,
-                    error:           Some(err.to_string()),
+                    error:           Some(format!("{err:#}")),
                 };
                 if !args.json {
-                    print_case_line(styles, printer, &case.name, "error", &report_case);
+                    print_case_line(printer, &case.name, "error", &report_case);
                 }
                 case_reports.push(report_case);
                 continue;
             }
         };
 
-        // start
         let client = ctx.server().await?;
-        if let Err(err) =
-            crate::commands::run::start::start_run_with_client(&client, &run_id, false).await
-        {
+        if let Err(err) = start::start_run_with_client(&client, &run_id, false).await {
             let report_case = report::CaseReport {
                 name:            case.name.clone(),
                 result:          report::CaseResult::Error,
@@ -120,18 +116,17 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
                     u64::try_from(case_start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 ),
                 cost_usd_micros: None,
-                error:           Some(err.to_string()),
+                error:           Some(format!("{err:#}")),
             };
             if !args.json {
-                print_case_line(styles, printer, &case.name, "error", &report_case);
+                print_case_line(printer, &case.name, "error", &report_case);
             }
             case_reports.push(report_case);
             continue;
         }
 
-        // wait with timeout
-        let timeout_dur = suite::parse_duration(&case.timeout)
-            .unwrap_or_else(|_| std::time::Duration::from_hours(1));
+        let timeout_dur =
+            suite::parse_duration(&case.timeout).unwrap_or_else(|_| Duration::from_hours(1));
         let deadline = Instant::now() + timeout_dur;
         let mut final_status = None;
         let mut timed_out = false;
@@ -170,15 +165,15 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
         let duration_ms = case_start.elapsed().as_millis() as u64;
         let (result, status_str) = if timed_out {
             if let Some(s) = &final_status {
-                let kind = crate::shared::run_status_kind(*s);
+                let kind = shared::run_status_kind(*s);
                 (report::CaseResult::Timeout, Some(kind.to_string()))
             } else {
                 (report::CaseResult::Timeout, None)
             }
         } else {
             let s = final_status.expect("final status");
-            let kind = crate::shared::run_status_kind(s);
-            if matches!(s, fabro_types::RunStatus::Succeeded { .. }) {
+            let kind = shared::run_status_kind(s);
+            if matches!(s, RunStatus::Succeeded { .. }) {
                 (report::CaseResult::Passed, Some(kind.to_string()))
             } else {
                 (report::CaseResult::Failed, Some(kind.to_string()))
@@ -207,7 +202,6 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
         };
         if !args.json {
             print_case_line(
-                styles,
                 printer,
                 &case.name,
                 report_case.result.as_str(),
@@ -225,13 +219,11 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
         pass_threshold: suite.pass_threshold,
         cases: case_reports,
     };
-    // output json
     let final_json = serde_json::to_value(&eval_report)?;
 
     if args.json {
-        print_json_pretty(&final_json)?;
+        shared::print_json_pretty(&final_json)?;
     } else {
-        // summary line
         let passed_n = eval_report.passed_count();
         let total = eval_report.cases.len();
         let pct = (eval_report.pass_rate() * 100.0) as u64;
@@ -254,25 +246,21 @@ pub(crate) async fn run(args: &EvalArgs, styles: &Styles, base_ctx: &CommandCont
     if let Some(output_path) = &args.output {
         #[expect(clippy::disallowed_methods, reason = "sync output write")]
         {
-            std::fs::write(output_path, serde_json::to_string_pretty(&final_json)?)?;
+            fs::write(output_path, serde_json::to_string_pretty(&final_json)?)?;
         }
     }
 
     if eval_report.pass_rate() >= suite.pass_threshold {
         Ok(())
     } else {
-        std::process::exit(1);
+        process::exit(1);
     }
 }
 
-fn build_run_args(
-    args: &EvalArgs,
-    _case: &suite::SuiteCase,
-    _suite: &suite::Suite,
-) -> crate::args::RunArgs {
-    crate::args::RunArgs {
+fn build_run_args(args: &EvalArgs) -> RunArgs {
+    RunArgs {
         target:               args.server.clone(),
-        inputs:               crate::args::InputOverrideArgs { values: Vec::new() },
+        inputs:               InputOverrideArgs { values: Vec::new() },
         workflow:             None,
         workflow_repo:        None,
         workflow_ref:         None,
@@ -296,11 +284,11 @@ fn build_run_args(
 }
 
 async fn poll_until_terminal_or_deadline(
-    client: &fabro_client::Client,
-    run_id: &fabro_types::RunId,
+    client: &Client,
+    run_id: &RunId,
     deadline: Instant,
-) -> Result<Option<fabro_types::RunStatus>> {
-    let interval = std::time::Duration::from_secs(1);
+) -> Result<Option<RunStatus>> {
+    let interval = Duration::from_secs(1);
     loop {
         let status = client.retrieve_run(run_id).await?.lifecycle.status;
         if status.is_terminal() {
@@ -311,27 +299,20 @@ async fn poll_until_terminal_or_deadline(
             return Ok(None);
         }
         let remaining = deadline.saturating_duration_since(now);
-        tokio::time::sleep(interval.min(remaining)).await;
+        time::sleep(interval.min(remaining)).await;
     }
 }
 
-fn print_case_line(
-    _styles: &Styles,
-    printer: fabro_util::printer::Printer,
-    name: &str,
-    result: &str,
-    report_case: &report::CaseReport,
-) {
-    // follow wait style roughly
-    let duration = report_case
+fn print_case_line(printer: Printer, name: &str, result: &str, report: &report::CaseReport) {
+    let duration = report
         .duration_ms
-        .map(format_duration_ms)
+        .map(shared::format_duration_ms)
         .unwrap_or_default();
-    let cost = report_case
+    let cost = report
         .cost_usd_micros
-        .map(|c| format!("  {}", format_usd_micros(c)))
+        .map(|c| format!("  {}", shared::format_usd_micros(c)))
         .unwrap_or_default();
-    let run_id = report_case.run_id.clone().unwrap_or_default();
+    let run_id = report.run_id.clone().unwrap_or_default();
     fabro_util::printout!(
         printer,
         "{} {} {} {} {}",

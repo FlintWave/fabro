@@ -1,7 +1,10 @@
-use serde::Serialize;
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
+use strum::IntoStaticStr;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum CaseResult {
     Passed,
     Failed,
@@ -11,12 +14,7 @@ pub(crate) enum CaseResult {
 
 impl CaseResult {
     pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Passed => "passed",
-            Self::Failed => "failed",
-            Self::Timeout => "timeout",
-            Self::Error => "error",
-        }
+        self.into()
     }
 }
 
@@ -59,12 +57,11 @@ impl EvalReport {
     }
 }
 
-impl serde::Serialize for EvalReport {
+impl Serialize for EvalReport {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
-        use serde::ser::SerializeStruct;
         let mut s = serializer.serialize_struct("EvalReport", 8)?;
         s.serialize_field("suite", &self.suite)?;
         s.serialize_field("started_at", &self.started_at)?;
@@ -79,6 +76,8 @@ impl serde::Serialize for EvalReport {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::{self, Value};
+
     use super::*;
 
     fn mk_report(passed: usize, total: usize, threshold: f64) -> EvalReport {
@@ -141,10 +140,10 @@ mod tests {
         assert!(v.get("pass_rate").is_some());
         assert!(v.get("passed").is_some());
         let case = &v["cases"][0];
-        assert_eq!(case["run_id"], serde_json::Value::Null);
-        assert_eq!(case["status"], serde_json::Value::Null);
-        assert_eq!(case["duration_ms"], serde_json::Value::Null);
-        assert_eq!(case["cost_usd_micros"], serde_json::Value::Null);
-        assert_eq!(case["error"], serde_json::Value::Null);
+        assert_eq!(case["run_id"], Value::Null);
+        assert_eq!(case["status"], Value::Null);
+        assert_eq!(case["duration_ms"], Value::Null);
+        assert_eq!(case["cost_usd_micros"], Value::Null);
+        assert_eq!(case["error"], Value::Null);
     }
 }
