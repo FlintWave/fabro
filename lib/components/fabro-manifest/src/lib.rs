@@ -1989,6 +1989,7 @@ repository = "target"
             &helper_path,
             r#"#!/bin/sh
 printf '%s\n' "${GIT_TERMINAL_PROMPT-unset}" > "$FABRO_PROMPT_ENV_LOG"
+printf '%s\n' "${GIT_ASKPASS+set}:${GIT_ASKPASS-unset}" >> "$FABRO_PROMPT_ENV_LOG"
 echo "helper saw GIT_TERMINAL_PROMPT=${GIT_TERMINAL_PROMPT-unset}" >&2
 exit 1
 "#,
@@ -2032,7 +2033,7 @@ exit 1
             });
         });
 
-        assert_eq!(std::fs::read_to_string(helper_log).unwrap(), "0\n");
+        assert_eq!(std::fs::read_to_string(helper_log).unwrap(), "0\nset:\n");
     }
 
     #[test]

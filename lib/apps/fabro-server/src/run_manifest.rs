@@ -797,12 +797,10 @@ async fn check_git_remote_ref(
         .map_or(request.origin_url.as_str(), |url| url.as_raw_url().as_str());
 
     let mut command = Command::new("git");
-    command.env("GIT_TERMINAL_PROMPT", "0").args([
-        "ls-remote",
-        "--heads",
-        "--exit-code",
-        remote_url,
-    ]);
+    command
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
+        .args(["ls-remote", "--heads", "--exit-code", remote_url]);
     if let Some(branch) = request.branch.as_ref() {
         command.arg(branch);
     }

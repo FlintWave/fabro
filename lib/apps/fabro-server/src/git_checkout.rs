@@ -355,7 +355,10 @@ impl GitCommandPlan {
         Self {
             program: "git".to_string(),
             args: args.into_iter().map(Into::into).collect(),
-            env: vec![("GIT_TERMINAL_PROMPT".to_string(), "0".to_string())],
+            env: vec![
+                ("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()),
+                ("GIT_ASKPASS".to_string(), String::new()),
+            ],
             current_dir: None,
             timeout,
             sensitive_values: Vec::new(),
@@ -778,6 +781,7 @@ mod tests {
         ]);
         assert_eq!(clone.timeout, Duration::from_mins(2));
         assert_eq!(clone.env_value("GIT_TERMINAL_PROMPT"), Some("0"));
+        assert_eq!(clone.env_value("GIT_ASKPASS"), Some(""));
 
         let fetch = build_bare_fetch_plan(&bare_dir, &clone_url, "feature/materialize", None);
         assert_eq!(fetch.args, vec![
@@ -791,6 +795,7 @@ mod tests {
         assert_eq!(fetch.current_dir.as_deref(), Some(bare_dir.as_path()));
         assert_eq!(fetch.timeout, Duration::from_mins(1));
         assert_eq!(fetch.env_value("GIT_TERMINAL_PROMPT"), Some("0"));
+        assert_eq!(fetch.env_value("GIT_ASKPASS"), Some(""));
 
         let worktree = build_worktree_add_plan(
             &bare_dir,
@@ -808,6 +813,7 @@ mod tests {
         assert_eq!(worktree.current_dir.as_deref(), Some(bare_dir.as_path()));
         assert_eq!(worktree.timeout, Duration::from_secs(30));
         assert_eq!(worktree.env_value("GIT_TERMINAL_PROMPT"), Some("0"));
+        assert_eq!(worktree.env_value("GIT_ASKPASS"), Some(""));
 
         let prune = build_worktree_prune_plan(&bare_dir);
         assert_eq!(prune.args, vec!["worktree", "prune"]);

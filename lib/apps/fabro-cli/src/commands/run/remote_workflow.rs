@@ -101,6 +101,7 @@ impl NativeGit {
             .args(HARDENED_GIT_CONFIG)
             .args(args)
             .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_ASKPASS", "")
             .env("GIT_LFS_SKIP_SMUDGE", "1")
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE")

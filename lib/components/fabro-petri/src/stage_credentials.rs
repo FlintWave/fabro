@@ -352,6 +352,7 @@ impl CredentialEnv {
         );
         env.entry("GIT_TERMINAL_PROMPT".into())
             .or_insert_with(|| "0".into());
+        env.entry("GIT_ASKPASS".into()).or_insert_with(|| "".into());
         Ok(())
     }
 }
@@ -625,9 +626,54 @@ mod tests {
             .await
             .expect("apply");
         assert!(process.contains_key("GIT_CONFIG_COUNT"));
+        assert_eq!(process.get("GIT_ASKPASS").map(SmolStr::as_str), Some(""));
         assert!(
             store.join("store").exists(),
             "a process spawn refreshes the store"
+        );
+        assert!(
+            router
+                .release(handle, ScopeOutcome::Succeeded)
+                .await
+                .is_clean()
+        );
+    }
+
+    #[tokio::test]
+    async fn git_askpass_is_preserved_or_defaulted() {
+        let dir = tempfile::tempdir().expect("directory");
+        let runtime = providers::standard_runtime(&SandboxProviderConfig::default());
+        let router = runtime.sandbox_router_for(dir.path()).expect("router");
+        let handle = router
+            .acquire(
+                &ScopeSpec::new(ScopeId::new(0), "git-askpass-credentials"),
+                &AcquireContext::bare(),
+            )
+            .await
+            .expect("acquire");
+        let store = dir.path().join("store-directory");
+        fs::create_dir(&store).expect("store directory");
+        let secrets = MapSecrets::empty();
+        let env = CredentialEnv {
+            inner:       handle.exec(),
+            credentials: credentials(true),
+            masker:      secrets.masker(),
+            directory:   store.display().to_string(),
+            written:     Mutex::new(None),
+        };
+        let mut process = BTreeMap::new();
+        env.apply(SpawnTarget::Process, &mut process)
+            .await
+            .expect("apply");
+        assert_eq!(process.get("GIT_ASKPASS").map(SmolStr::as_str), Some(""));
+
+        let mut process = BTreeMap::from([("GIT_ASKPASS".into(), "custom-askpass".into())]);
+        env.apply(SpawnTarget::Process, &mut process)
+            .await
+            .expect("apply");
+        assert_eq!(
+            process.get("GIT_ASKPASS").map(SmolStr::as_str),
+            Some("custom-askpass")
         );
         assert!(
             router

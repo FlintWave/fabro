@@ -887,6 +887,7 @@ impl RunWorkspaces {
             .current_dir(cwd)
             .envs(env.iter().map(|(key, value)| (key, value)))
             .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_ASKPASS", "")
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE")
             .env_remove("GIT_INDEX_FILE")
@@ -928,7 +929,10 @@ impl RunWorkspaces {
                 extra_env
                     .iter()
                     .map(|(key, value)| (key.as_str().into(), value.as_str().into()))
-                    .chain([("GIT_TERMINAL_PROMPT".into(), "0".into())])
+                    .chain([
+                        ("GIT_TERMINAL_PROMPT".into(), "0".into()),
+                        ("GIT_ASKPASS".into(), "".into()),
+                    ])
                     .collect(),
             );
         let mut handle = env

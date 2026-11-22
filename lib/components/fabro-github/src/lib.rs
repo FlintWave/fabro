@@ -39,11 +39,12 @@ pub const GITHUB_CREDENTIAL_HELPER: &str = r#"!f() { if [ "$1" = get ]; then ech
 
 /// Configure a `git` invocation to authenticate to github.com through
 /// [`GITHUB_CREDENTIAL_HELPER`] with `token`, isolated from user/system git
-/// configuration and terminal prompts. The token is passed only through the
-/// child process environment.
+/// configuration, terminal prompts and askpass programs. The token is passed
+/// only through the child process environment.
 pub fn apply_probe_git_env(command: &mut Command, token: &str) {
     command
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env(EnvVars::GITHUB_TOKEN, token)
@@ -2946,5 +2947,45 @@ mod tests {
             ),
             "got: {err}"
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "synchronous file setup in test")]
+    async fn probe_git_env_never_launches_an_askpass_program() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("askpass.sh");
+        let marker = dir.path().join("marker");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).unwrap();
+
+        let mut command = Command::new("git");
+        command.args(["credential", "fill"]);
+        apply_probe_git_env(&mut command, "unused-token");
+        command.env("SSH_ASKPASS", &script);
+        command.stdin(std::process::Stdio::piped());
+        command.stdout(std::process::Stdio::null());
+        command.stderr(std::process::Stdio::null());
+
+        let mut child = command.spawn().unwrap();
+        {
+            use tokio::io::AsyncWriteExt;
+            let mut stdin = child.stdin.take().unwrap();
+            stdin
+                .write_all(b"protocol=https\nhost=example.invalid\n\n")
+                .await
+                .unwrap();
+        }
+        let status = child.wait().await.unwrap();
+        assert!(!status.success());
+        assert!(!marker.exists(), "askpass program was launched");
     }
 }

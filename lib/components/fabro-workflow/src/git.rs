@@ -154,6 +154,7 @@ pub fn push_branch_noninteractive(repo: &Path, remote: &str, branch: &str) -> Re
     );
     let output = git_cmd(repo)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
         .args(["push", remote, branch])
         .output()
         .map_err(|e| Error::engine_with_source("git push failed", e))?;
@@ -177,6 +178,7 @@ pub fn remote_branch_sha_noninteractive(
     let branch_ref = format!("refs/heads/{branch}");
     let output = git_cmd(repo)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
         .args(["ls-remote", "--refs", remote, &branch_ref])
         .output()
         .map_err(|e| Error::engine_with_source("git ls-remote failed", e))?;
