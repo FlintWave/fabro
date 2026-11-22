@@ -380,6 +380,7 @@ models/run-artifact-entry.ts
 models/run-artifact-list-response.ts
 models/run-artifact.ts
 models/run-branch-settings.ts
+models/run-budget-settings.ts
 models/run-checkpoint-settings.ts
 models/run-checkpoint.ts
 models/run-client-provenance.ts

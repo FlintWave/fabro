@@ -15,5 +15,8 @@
 
 
 export interface RunBudgetSettings {
+    /**
+     * Spend cap in whole micro-dollars. Null when unset.
+     */
     'max_usd_micros': number | null;
 }
