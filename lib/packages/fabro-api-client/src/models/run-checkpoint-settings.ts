@@ -16,6 +16,7 @@
 
 export interface RunCheckpointSettings {
     'exclude_globs': Array<string>;
+    'protected_globs'?: Array<string>;
     /**
      * Accepted for compatibility. Fabro-managed run-branch checkpoint commits never run local Git commit hooks: the sandbox driver disables repository hooks on every git command it runs. Does not affect Fabro `[[run.hooks]]`. Defaults to false.
      */
