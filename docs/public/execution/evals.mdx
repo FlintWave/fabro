@@ -1,12 +1,15 @@
 ---
-title: Evaluating workflows
+title: "Evaluating workflows"
+description: "Run a fixed set of known tasks against a workflow and gate on pass rate"
 ---
 
-An eval suite runs a fixed set of known tasks and reports a pass rate.
+`fabro eval` runs every case in a suite file, records pass or fail for each, and exits 0 when the pass rate meets the threshold. Use it to catch regressions after changing prompts, models, or hooks.
 
-## File format
+## Suite file format
 
-```toml
+A suite is a TOML file with a `[suite]` header and one or more `[[case]]` entries:
+
+```toml title="smoke.toml"
 _version = 1
 
 [suite]
@@ -16,6 +19,48 @@ pass_threshold = 0.8
 [[case]]
 name = "fix-add"
 workflow = "workflows/fix/workflow.toml"
+goal_file = "cases/fix-add/goal.md"
+
+[[case]]
+name = "rename-method"
+workflow = "workflows/fix/workflow.toml"
+target_from = "cases/rename-method/repo"
+inputs = { method = "oldName" }
+timeout = "5m"
+environment = "local"
 ```
 
-Exit codes: 0 when pass rate >= threshold, 1 otherwise. Rerun suites whenever prompts, models or hooks change, and add a case for every incident.
+### `[suite]` fields
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | Yes | Suite name, used in reports and JSON output. |
+| `pass_threshold` | No | Fraction of cases that must pass (0.0 to 1.0). Defaults to 1.0. |
+
+### `[[case]]` fields
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | Yes | Case name, unique within the suite. |
+| `workflow` | Yes | Path to the workflow TOML, relative to the suite file. |
+| `target_from` | No | Directory to use as the run workspace. Defaults to the suite file's directory. |
+| `goal_file` | No | Path to a file whose contents become the run goal. |
+| `inputs` | No | Key-value pairs passed as `[run.inputs]` to the workflow. |
+| `environment` | No | Named environment for agent tools. Overrides the `--environment` CLI flag. |
+| `timeout` | No | Per-case timeout (e.g. `"5m"`, `"30s"`). |
+
+## Exit codes
+
+`fabro eval` exits 0 when pass rate >= `pass_threshold`, 1 otherwise. A case passes when its run completes with a successful outcome; any other result (failure, timeout, cancellation) counts as a failure.
+
+## Running a subset
+
+Pass `--only` one or more times to restrict the run to specific cases:
+
+```bash
+fabro eval smoke.toml --only fix-add --only rename-method
+```
+
+## JSON output
+
+`--json` writes structured results to stdout. `--output report.json` writes them to a file instead. Both can be combined.
