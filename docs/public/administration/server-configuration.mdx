@@ -121,14 +121,14 @@ Several `settings.toml` settings can be overridden via `fabro server start` flag
 | `--bind` | Resolved `[server.listen]`, falling back to `~/.fabro/fabro.sock` when `[server.listen]` is absent | Address to bind: `IP` or `IP:port` for TCP, or a path for Unix socket |
 | `--web` | enabled | Enable the embedded web UI, browser auth routes, and web-only helper endpoints |
 | `--no-web` | disabled | Disable the embedded web UI, browser auth routes, and web-only helper endpoints |
-| `--foreground` | — | Run in the foreground instead of daemonizing |
-| `--model` | — | Override default LLM model |
-| `--provider` | — | Override default LLM provider |
-| `--environment` | — | Override default environment slug |
+| `--foreground` | none | Run in the foreground instead of daemonizing |
+| `--model` | none | Override default LLM model |
+| `--provider` | none | Override default LLM provider |
+| `--environment` | none | Override default environment slug |
 | `--max-concurrent-runs` | `5` | Maximum concurrent run executions |
 | `--config` | `~/.fabro/settings.toml` | Path to server config file |
 
-CLI flags take precedence over `settings.toml` values. See [Run Configuration — Precedence](/execution/run-configuration#precedence) for the full resolution order.
+CLI flags take precedence over `settings.toml` values. See [Run Configuration: Precedence](/execution/run-configuration#precedence) for the full resolution order.
 
 ### `[server.web]` section
 
@@ -291,7 +291,7 @@ Configure the server log level and destination.
 
 Level precedence: `FABRO_LOG` env var > `--debug` flag > `[server.logging].level` > `"info"`.
 
-Destination precedence: `FABRO_LOG_DESTINATION` env var > `[server.logging].destination` > command-mode default. `stdout` is incompatible with daemon mode — use `fabro server start --foreground` (which is what container images do). Default install-generated `settings.toml` omits `destination` so foreground mode streams logs to stdout without extra config.
+Destination precedence: `FABRO_LOG_DESTINATION` env var > `[server.logging].destination` > command-mode default. `stdout` is incompatible with daemon mode. Use `fabro server start --foreground` (which is what container images do). Default install-generated `settings.toml` omits `destination` so foreground mode streams logs to stdout without extra config.
 
 The CLI has its own `[cli.logging]` section.
 
@@ -356,10 +356,10 @@ Configure checkpoint behavior for all runs.
 | Key | Description |
 |---|---|
 | `exclude_globs` | Glob patterns for files to exclude from checkpoint commits (for example, `["**/node_modules/**"]`) |
-| `skip_git_hooks` | When `true`, Fabro-managed run-branch checkpoint commits bypass local Git commit hooks. Defaults to `false`. Does not affect Fabro workflow `[[run.hooks]]` or metadata-branch snapshots. |
-| `commit_timeout` | Max duration for the per-node run-branch checkpoint commit (e.g. `"30s"`, `"10m"`). This commit runs repository commit hooks unless `skip_git_hooks` is `true`. Defaults to `"30s"`. |
+| `skip_git_hooks` | Accepted for compatibility. Fabro-managed run-branch checkpoint commits never run local Git commit hooks (e.g. `pre-commit`, `commit-msg`); the sandbox driver disables repository hooks on every git command it runs. Does not affect Fabro workflow `[[run.hooks]]`. |
+| `commit_timeout` | Accepted for compatibility. The per-node run-branch checkpoint commit runs under the sandbox driver's git command budget; no repository hook can prolong it. |
 
-`exclude_globs` replaces across layers — the highest-precedence layer wins wholesale. `skip_git_hooks` and `commit_timeout` use normal override semantics. See [Run Configuration — Checkpoint](/execution/run-configuration#runcheckpoint) for per-run configuration.
+`exclude_globs` replaces across layers; the highest-precedence layer wins wholesale. `skip_git_hooks` and `commit_timeout` use normal override semantics. See [Run Configuration: Checkpoint](/execution/run-configuration#runcheckpoint) for per-run configuration.
 
 ## Secrets and environment variables
 
