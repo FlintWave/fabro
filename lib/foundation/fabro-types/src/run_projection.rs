@@ -281,37 +281,37 @@ impl StageContextWindow {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StageProjection {
-    pub first_event_seq:       NonZeroU32,
-    pub prompt:                Option<String>,
-    pub response:              Option<String>,
-    pub completion:            Option<StageCompletion>,
-    pub provider_used:         Option<StageModelUsage>,
-    pub diff:                  Option<String>,
-    pub script_invocation:     Option<serde_json::Value>,
-    pub script_timing:         Option<serde_json::Value>,
-    pub parallel_results:      Option<Vec<crate::ParallelBranchResult>>,
+    pub first_event_seq:         NonZeroU32,
+    pub prompt:                  Option<String>,
+    pub response:                Option<String>,
+    pub completion:              Option<StageCompletion>,
+    pub provider_used:           Option<StageModelUsage>,
+    pub diff:                    Option<String>,
+    pub script_invocation:       Option<serde_json::Value>,
+    pub script_timing:           Option<serde_json::Value>,
+    pub parallel_results:        Option<Vec<crate::ParallelBranchResult>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parallel_branch_id:    Option<ParallelBranchId>,
-    pub output:                Option<String>,
+    pub parallel_branch_id:      Option<ParallelBranchId>,
+    pub output:                  Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_bytes:          Option<u64>,
+    pub output_bytes:            Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub live_streaming:        Option<bool>,
+    pub live_streaming:          Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub termination:           Option<crate::CommandTermination>,
+    pub termination:             Option<crate::CommandTermination>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at:            Option<DateTime<Utc>>,
+    pub started_at:              Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub handler:               Option<StageHandler>,
+    pub handler:                 Option<StageHandler>,
     /// Graph visit that produced this stage execution. The `StageId` ordinal
     /// counts executions, which diverges from the graph visit when
     /// post-checkpoint work is replayed after resume. Absent on
     /// projections built from events written before stage execution identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph_visit:           Option<u32>,
+    pub graph_visit:             Option<u32>,
     /// Prior execution superseded by this resumed replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resumed_from_stage_id: Option<StageId>,
+    pub resumed_from_stage_id:   Option<StageId>,
     /// Timing breakdown for this stage execution's latest terminal attempt.
     /// One projection represents one execution, which may contain multiple
     /// automatic attempts; earlier executions of the same node keep their own
@@ -322,14 +322,14 @@ pub struct StageProjection {
     /// [`StageProjection::live_timing`]; once terminal this carries the
     /// finalized, authoritative breakdown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub timing:                Option<StageTiming>,
+    pub timing:                  Option<StageTiming>,
     /// Inference time accumulated from closed brackets during this attempt.
     ///
     /// Live estimate only: the authoritative value arrives with the terminal
     /// event and lands in `timing`. Excludes the currently-open bracket, which
     /// [`StageProjection::live_timing`] adds from `inference.started_at`.
     #[serde(default, skip_serializing_if = "is_zero_ms")]
-    pub live_inference_ms:     u64,
+    pub live_inference_ms:       u64,
     /// Tool time accumulated from closed tool batches during this attempt.
     ///
     /// A batch spans the first `agent.tool.started` with no outstanding calls
@@ -338,26 +338,31 @@ pub struct StageProjection {
     /// the in-process stopwatch brackets `execute_tool_calls`; summing
     /// per-call durations would over-count parallel tool use.
     #[serde(default, skip_serializing_if = "is_zero_ms")]
-    pub live_tool_ms:          u64,
+    pub live_tool_ms:            u64,
     /// Open tool batch for this stage: when the current batch started, and the
     /// `tool_call_id`s that have not yet reported completion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_batch:            Option<StageToolBatchProjection>,
+    pub tool_batch:              Option<StageToolBatchProjection>,
     #[serde(default)]
-    pub usage:                 Usage,
+    pub usage:                   Usage,
+    /// Every finished attempt's cost on this stage, summed: a resume seeds its
+    /// spend total from this, so retried attempts are not lost. Zero when no
+    /// attempt has been recorded. `usage` stays the latest attempt's.
+    #[serde(default)]
+    pub attempt_cost_usd_micros: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model:                 Option<ModelRef>,
+    pub model:                   Option<ModelRef>,
     /// The finished stage's usage split by model, as `stage.completed` or
     /// `stage.failed` reported it: the root session's route and each
     /// subagent's own model. Sums to `usage`. Empty while the stage runs and
     /// for stages without a coding agent; the usage rollup then puts
     /// `usage` under `model`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub usage_by_model:        Vec<ModelUsage>,
+    pub usage_by_model:          Vec<ModelUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub permission_level:      Option<PermissionLevel>,
+    pub permission_level:        Option<PermissionLevel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub agent_tools:           Vec<ToolSummary>,
+    pub agent_tools:             Vec<ToolSummary>,
     /// Open inference bracket for this stage, if the event log contains one.
     ///
     /// `Some` means exactly *"an `agent.llm.started` was recorded and no
@@ -366,13 +371,13 @@ pub struct StageProjection {
     /// truthful statement of what the log knows. `watchdog.timeout` remains
     /// the authority on whether a run is actually stuck.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inference:             Option<StageInferenceProjection>,
+    pub inference:               Option<StageInferenceProjection>,
     /// Start of an external ACP agent process, if one is running.
     ///
     /// ACP agents do not emit Fabro's internal LLM brackets, so their process
     /// lifetime is the best available live inference estimate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub acp_started_at:        Option<DateTime<Utc>>,
+    pub acp_started_at:          Option<DateTime<Utc>>,
     /// Pebble's fold of this stage's agent events: the one agent projection,
     /// fed every `agent.*` and `todo.*` event stored on the stage, and what
     /// the stage view reads for todos, subagents, skills, MCP servers, files,
@@ -388,8 +393,8 @@ pub struct StageProjection {
     /// `agent.processing.end` was kept, so `state` is the authority on
     /// whether a stage is done.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent:                 Option<SessionProjection>,
-    pub state:                 StageState,
+    pub agent:                   Option<SessionProjection>,
+    pub state:                   StageState,
 }
 
 /// Serde guard so zero-valued live accumulators stay off the wire.
@@ -463,6 +468,7 @@ impl StageProjection {
             live_tool_ms: 0,
             tool_batch: None,
             usage: Usage::default(),
+            attempt_cost_usd_micros: 0,
             model: None,
             permission_level: None,
             agent_tools: Vec::new(),

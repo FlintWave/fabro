@@ -410,15 +410,14 @@ fn completion(status: &Status, at: DateTime<Utc>) -> StageCompletion {
 pub(crate) fn attempt_usage(metrics: &Metrics) -> Usage {
     let custom = &metrics.custom;
     if let Some(root) = usage_of(custom.get("pebble.usage")) {
-        let descendants: Vec<Usage> = custom
+        custom
             .get("pebble.subagents")
             .and_then(|subagents| subagents.get("sessions"))
             .and_then(Value::as_object)
             .into_iter()
             .flat_map(|sessions| sessions.values().filter_map(account))
             .map(|(_, usage)| usage)
-            .collect();
-        descendants.into_iter().fold(root, Usage::saturating_add)
+            .fold(root, Usage::saturating_add)
     } else {
         usage_of(custom.get("prompt.usage")).unwrap_or_default()
     }
@@ -443,6 +442,10 @@ fn apply_metrics(stage: &mut StageProjection, metrics: &Metrics) {
         _ => (inference, tool),
     };
     stage.set_authoritative_timing(StageTiming::new(wall, inference, tool).clamped_to_wall());
+    let attempt = attempt_usage(metrics);
+    stage.attempt_cost_usd_micros = stage
+        .attempt_cost_usd_micros
+        .saturating_add(attempt.cost.map_or(0, |cost| cost.usd_micros));
     if let Some(root) = usage_of(custom.get("pebble.usage")) {
         apply_agent_usage(stage, metrics, root);
     } else if let Some(usage) = usage_of(custom.get("prompt.usage")) {

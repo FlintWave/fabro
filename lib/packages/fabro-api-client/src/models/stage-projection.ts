@@ -104,6 +104,10 @@ export interface StageProjection {
      * The stage\'s usage: the session tree\'s tokens and cost, live and once the stage ends. Every answer is priced once by lithos-llm (the provider\'s reported cost, else the catalog\'s price for the route) and summed; the cost is absent only when an answer had neither.
      */
     'usage': Usage;
+    /**
+     * Sum of the cost of every finished attempt on this stage, in micro-dollars; `usage` keeps only the latest attempt\'s.
+     */
+    'attempt_cost_usd_micros'?: number;
     'model'?: UsageModelRef | null;
     'permission_level'?: PermissionLevel | null;
     /**

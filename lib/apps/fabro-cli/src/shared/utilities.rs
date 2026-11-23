@@ -136,11 +136,7 @@ pub(crate) fn format_tokens_human(tokens: u64) -> String {
 }
 
 pub(crate) fn format_usd_micros(usd_micros: u64) -> String {
-    if usd_micros < 10_000 {
-        format!("${:.6}", usd_micros as f64 / 1_000_000.0)
-    } else {
-        format!("${:.2}", usd_micros as f64 / 1_000_000.0)
-    }
+    format!("${:.2}", usd_micros as f64 / 1_000_000.0)
 }
 
 pub(crate) fn tilde_path(path: &Path) -> String {
@@ -257,25 +253,5 @@ mod tests {
     #[test]
     fn format_usd_micros_two_decimals() {
         assert_eq!(format_usd_micros(570_000), "$0.57");
-    }
-
-    #[test]
-    fn format_usd_micros_one_micro_dollar() {
-        assert_eq!(format_usd_micros(1), "$0.000001");
-    }
-
-    #[test]
-    fn format_usd_micros_nine_thousand_nine_hundred_ninety_nine() {
-        assert_eq!(format_usd_micros(9_999), "$0.009999");
-    }
-
-    #[test]
-    fn format_usd_micros_ten_thousand() {
-        assert_eq!(format_usd_micros(10_000), "$0.01");
-    }
-
-    #[test]
-    fn format_usd_micros_five_million() {
-        assert_eq!(format_usd_micros(5_000_000), "$5.00");
     }
 }

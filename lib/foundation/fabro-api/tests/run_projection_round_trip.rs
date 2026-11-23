@@ -97,6 +97,7 @@ fn run_projection_round_trips_populated_projection() {
                         "cache_write": 0
                     }
                 },
+                "attempt_cost_usd_micros": 0,
                 "state": "running"
             }
         }

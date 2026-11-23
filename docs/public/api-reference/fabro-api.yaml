@@ -11698,6 +11698,14 @@ components:
             (the provider's reported cost, else the catalog's price for the
             route) and summed; the cost is absent only when an answer had
             neither.
+        attempt_cost_usd_micros:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: >-
+            Sum of the cost of every finished attempt on this stage, in
+            micro-dollars; `usage` keeps only the latest attempt's.
         model:
           oneOf:
             - $ref: "#/components/schemas/UsageModelRef"

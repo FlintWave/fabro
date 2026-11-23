@@ -154,7 +154,7 @@ impl Harness {
             artifact_writer:    Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
             source:             self.source.clone(),
             publisher:          self.publisher.clone(),
-            budget:             None,
+            budget_usd_micros:  None,
             budget_seed_micros: 0,
         }
     }
@@ -858,7 +858,7 @@ async fn budgeted_run(harness: &Harness, budget: Option<u64>) -> engine::RunOutc
     };
     let (interviewer, observers) = no_questions();
     let mut hooks = harness.hooks(&SandboxProviderKind::LOCAL);
-    hooks.budget = budget;
+    hooks.budget_usd_micros = budget;
     let request = RunRequest {
         run_id: harness.run_id.to_string(),
         run_dir: harness.run_dir.clone(),
@@ -1081,7 +1081,7 @@ async fn an_attempt_prepared_twice_for_one_checkpoint_key_is_counted_once() {
         ))),
         source:             None,
         publisher:          None,
-        budget:             Some(1000),
+        budget_usd_micros:  Some(1000),
         budget_seed_micros: 0,
     };
     let hooks = FabroHooks::new(

@@ -98,6 +98,7 @@ fn usage_by_model_rows_match_openapi_json_shape() {
                 "cache_write": 0
             }
         },
+        "attempt_cost_usd_micros": 0,
         "state": "running"
     }))
     .unwrap();
@@ -222,6 +223,7 @@ fn stage_projection_without_inference_round_trips() {
                 "cache_write": 0
             }
         },
+        "attempt_cost_usd_micros": 0,
         "state": "running"
     });
 
@@ -232,6 +234,16 @@ fn stage_projection_without_inference_round_trips() {
     assert_eq!(stage.live_inference_ms, 0);
     assert_eq!(stage.live_tool_ms, 0);
     assert_eq!(serde_json::to_value(stage).unwrap(), value);
+
+    // A projection written before `attempt_cost_usd_micros` existed still
+    // deserializes.
+    let mut older = value.clone();
+    older
+        .as_object_mut()
+        .unwrap()
+        .remove("attempt_cost_usd_micros");
+    let stage: StageProjection = serde_json::from_value(older).unwrap();
+    assert_eq!(stage.attempt_cost_usd_micros, 0);
 }
 
 #[test]
@@ -293,6 +305,7 @@ fn stage_projection_round_trips_representative_json() {
                 "cache_write": 0
             }
         },
+        "attempt_cost_usd_micros": 0,
         "permission_level": "read-only",
         "agent_tools": [
             {

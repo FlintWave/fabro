@@ -251,7 +251,7 @@ pub struct HooksSpec {
     /// nothing.
     pub publisher:          Option<Arc<dyn RunPublisher>>,
     /// The run's spend cap in micro-dollars, when one is set.
-    pub budget:             Option<u64>,
+    pub budget_usd_micros:  Option<u64>,
     /// The cost already spent before this run began, in micro-dollars
     /// (resuming a run seeds the cap from its finished attempts).
     pub budget_seed_micros: u64,
@@ -298,7 +298,7 @@ impl HooksSpec {
             artifact_writer,
             source: None,
             publisher: None,
-            budget: settings.budget.max_usd_micros,
+            budget_usd_micros: settings.budget.max_usd_micros,
             budget_seed_micros: 0,
         }
     }
@@ -337,11 +337,7 @@ impl HooksSpec {
 pub fn budget_seed_from_projection(projection: &RunProjection) -> u64 {
     let mut total = 0u64;
     for (_stage_id, stage) in projection.iter_stages() {
-        if stage.completion.is_none() {
-            continue;
-        }
-        let micros = stage.usage.cost.as_ref().map_or(0, |cost| cost.usd_micros);
-        total = total.saturating_add(micros);
+        total = total.saturating_add(stage.attempt_cost_usd_micros);
     }
     total
 }
@@ -399,6 +395,76 @@ impl CheckpointLedger {
         if current.is_none() {
             *current = last;
         }
+    }
+}
+
+/// The budget exhaustion a charge reports: what the run had spent when the
+/// charge crossed the cap, the cap, and the message the run's failure
+/// carries.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BudgetExhausted {
+    spent_usd_micros: u64,
+    cap_usd_micros:   u64,
+    message:          String,
+}
+
+/// The run's spend cap and the attempts charged against it.
+struct RunBudget {
+    cap_usd_micros: Option<u64>,
+    inner:          Mutex<RunBudgetInner>,
+}
+
+struct RunBudgetInner {
+    total_usd_micros: u64,
+    counted:          HashSet<CheckpointKey>,
+    exhausted:        Option<BudgetExhausted>,
+}
+
+impl RunBudget {
+    fn new(cap_usd_micros: Option<u64>, seed_usd_micros: u64) -> Self {
+        Self {
+            cap_usd_micros,
+            inner: Mutex::new(RunBudgetInner {
+                total_usd_micros: seed_usd_micros,
+                counted:          HashSet::new(),
+                exhausted:        None,
+            }),
+        }
+    }
+
+    fn failure(&self) -> Option<String> {
+        sync::lock(&self.inner)
+            .exhausted
+            .as_ref()
+            .map(|exhausted| exhausted.message.clone())
+    }
+
+    /// Charge one attempt. A run without a cap spends freely: nothing is
+    /// counted and nothing comes back. Under a cap the attempt's key counts
+    /// once; a key counted already returns the stored exhaustion, if the
+    /// budget is exhausted.
+    fn charge(&self, key: CheckpointKey, cost: u64) -> Option<BudgetExhausted> {
+        let cap = self.cap_usd_micros?;
+        let mut inner = sync::lock(&self.inner);
+        if !inner.counted.insert(key) {
+            return inner.exhausted.clone();
+        }
+        inner.total_usd_micros = inner.total_usd_micros.saturating_add(cost);
+        let spent = inner.total_usd_micros;
+        if spent < cap {
+            return None;
+        }
+        let exhausted = BudgetExhausted {
+            spent_usd_micros: spent,
+            cap_usd_micros:   cap,
+            message:          format!(
+                "run budget exhausted: spent {} of {}",
+                format_budget_usd(spent),
+                format_budget_usd(cap)
+            ),
+        };
+        inner.exhausted = Some(exhausted.clone());
+        Some(exhausted)
     }
 }
 
@@ -493,14 +559,8 @@ pub struct FabroHooks {
     scopes:             ScopeEnvs,
     /// The checkpoint failure that ended the run, when one did.
     failure:            Mutex<Option<String>>,
-    /// The run's spend cap, in micro-dollars, when one is set.
-    budget_cap:         Option<u64>,
-    /// The cost spent so far, in micro-dollars, saturating.
-    budget_total:       Mutex<u64>,
-    /// Attempts already counted toward the cap, keyed on their checkpoint key.
-    budget_counted:     Mutex<std::collections::HashSet<CheckpointKey>>,
-    /// The budget failure that ended the run, when one did.
-    budget_failure:     Mutex<Option<String>>,
+    /// The run's spend cap and the attempts that exhausted it.
+    budget:             RunBudget,
     publisher:          Option<Arc<dyn RunPublisher>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
@@ -569,10 +629,7 @@ impl FabroHooks {
             },
             scopes: ScopeEnvs::default(),
             failure: Mutex::default(),
-            budget_cap: spec.budget,
-            budget_total: Mutex::new(spec.budget_seed_micros),
-            budget_counted: Mutex::default(),
-            budget_failure: Mutex::default(),
+            budget: RunBudget::new(spec.budget_usd_micros, spec.budget_seed_micros),
             publisher: spec.publisher,
             resumed,
             restore: OnceCell::new(),
@@ -597,7 +654,7 @@ impl FabroHooks {
 
     #[must_use]
     pub fn budget_failure(&self) -> Option<String> {
-        sync::lock(&self.budget_failure).clone()
+        self.budget.failure()
     }
 
     /// The run's workspaces on this host, as the hooks reach them.
@@ -1635,7 +1692,7 @@ fn is_budget_exhausted(status: &Status) -> bool {
 
 /// Format a micro-dollar amount for the spend-cap message: sub-cent amounts
 /// keep six decimals so they stay non-zero, larger amounts keep two.
-pub fn format_budget_usd(usd_micros: u64) -> String {
+fn format_budget_usd(usd_micros: u64) -> String {
     if usd_micros < 10_000 {
         format!("${:.6}", usd_micros as f64 / 1_000_000.0)
     } else {
@@ -1727,38 +1784,24 @@ impl ExecutionHooks for FabroHooks {
             }
         };
         if checkpoint_ok {
-            if let Some(cap) = self.budget_cap {
-                let newly_counted = sync::lock(&self.budget_counted).insert(key);
-                if newly_counted {
-                    let usage = projection::attempt_usage(&metrics);
-                    let cost = usage.cost.map_or(0, |cost| cost.usd_micros);
-                    let spent = {
-                        let mut total = sync::lock(&self.budget_total);
-                        *total = total.saturating_add(cost);
-                        *total
-                    };
-                    if spent >= cap {
-                        let message = format!(
-                            "run budget exhausted: spent {} of {}",
-                            format_budget_usd(spent),
-                            format_budget_usd(cap)
-                        );
-                        warn!(
-                            run_id = %self.run_id,
-                            node,
-                            execution = key.execution,
-                            firing = key.firing,
-                            attempt = key.attempt,
-                            "run budget exhausted; the run ends"
-                        );
-                        self.fail_run(&message);
-                        *sync::lock(&self.budget_failure) = Some(message.clone());
-                        prepared.adjustment.status = Some(Status::Failure(
-                            FailureInfo::new(message.clone()).with_class(BUDGET_EXHAUSTED_CLASS),
-                        ));
-                        prepared.adjustment.reason = Some(message);
-                    }
-                }
+            let usage = projection::attempt_usage(&metrics);
+            let cost = usage.cost.map_or(0, |cost| cost.usd_micros);
+            if let Some(exhausted) = self.budget.charge(key, cost) {
+                warn!(
+                    run_id = %self.run_id,
+                    node,
+                    execution = key.execution,
+                    firing = key.firing,
+                    attempt = key.attempt,
+                    spent_usd_micros = exhausted.spent_usd_micros,
+                    cap_usd_micros = exhausted.cap_usd_micros,
+                    "run budget exhausted; the run ends"
+                );
+                self.fail_run(&exhausted.message);
+                prepared.adjustment.status = Some(Status::Failure(
+                    FailureInfo::new(exhausted.message.clone()).with_class(BUDGET_EXHAUSTED_CLASS),
+                ));
+                prepared.adjustment.reason = Some(exhausted.message);
             }
         }
         Ok(prepared)
@@ -2052,7 +2095,7 @@ mod tests {
                 artifact_writer,
                 source: None,
                 publisher: None,
-                budget: None,
+                budget_usd_micros: None,
                 budget_seed_micros: 0,
             },
             Arc::new(NoHooks),
@@ -2431,5 +2474,47 @@ mod tests {
         assert_eq!(selected.len(), ARTIFACT_MAX_FILES);
         assert_eq!(selected[0], ("tiny.txt".to_string(), 1));
         assert!(selected.iter().all(|(path, _)| path != "huge.bin"));
+    }
+
+    fn attempt_key(firing: u64) -> CheckpointKey {
+        CheckpointKey {
+            execution: 1,
+            firing,
+            attempt: 1,
+        }
+    }
+
+    #[test]
+    fn an_attempts_key_is_charged_once() {
+        let budget = RunBudget::new(Some(10), 0);
+        assert_eq!(budget.charge(attempt_key(1), 6), None);
+        // The same key again counts nothing: with 6 counted twice the 12
+        // spent would have passed the cap.
+        assert_eq!(budget.charge(attempt_key(1), 6), None);
+    }
+
+    #[test]
+    fn charging_past_the_cap_exhausts_the_budget() {
+        let budget = RunBudget::new(Some(10), 0);
+        assert_eq!(budget.charge(attempt_key(1), 6), None);
+        let exhausted = budget
+            .charge(attempt_key(2), 4)
+            .expect("the cap is reached exactly");
+        assert_eq!(exhausted.spent_usd_micros, 10);
+        assert_eq!(exhausted.cap_usd_micros, 10);
+        assert_eq!(
+            exhausted.message,
+            "run budget exhausted: spent $0.000010 of $0.000010"
+        );
+        // A key counted already reports the stored exhaustion.
+        assert_eq!(budget.charge(attempt_key(1), 0), Some(exhausted));
+    }
+
+    #[test]
+    fn an_uncapped_budget_never_exhausts() {
+        let budget = RunBudget::new(None, 0);
+        assert_eq!(budget.charge(attempt_key(1), 100), None);
+        assert_eq!(budget.charge(attempt_key(1), 100), None);
+        assert_eq!(budget.failure(), None);
     }
 }
