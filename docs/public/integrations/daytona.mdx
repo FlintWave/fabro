@@ -3,7 +3,7 @@ title: "Daytona"
 description: "Run Fabro workflows in sandboxed Daytona cloud environments"
 ---
 
-[Daytona](https://daytona.io) provides cloud-hosted sandbox VMs for Fabro workflows. Each run gets an ephemeral, isolated environment with its own filesystem, network, and compute resources — keeping your host machine clean and giving agents a reproducible workspace.
+[Daytona](https://daytona.io) provides cloud-hosted sandbox VMs for Fabro workflows. Each run gets an ephemeral, isolated environment with its own filesystem, network, and compute resources, keeping your host machine clean and giving agents a reproducible workspace.
 
 ## What the Daytona integration enables
 
@@ -13,7 +13,7 @@ description: "Run Fabro workflows in sandboxed Daytona cloud environments"
 | **Snapshots** | Pre-built environment images so each run starts with dependencies already installed |
 | **SSH access** | Connect to a running sandbox for live debugging |
 | **Network controls** | Restrict agent egress with block-all or CIDR-based allow lists |
-| **MCP sandbox transport** | Run [MCP servers](/agents/mcp#sandbox) inside the sandbox — e.g., Playwright for browser automation |
+| **MCP sandbox transport** | Run [MCP servers](/agents/mcp#sandbox) inside the sandbox (e.g., Playwright for browser automation) |
 
 ## Prerequisites
 
@@ -55,7 +55,6 @@ provider = "daytona"
 
 [environments.cloud.lifecycle]
 preserve = false
-auto_stop = "60m"
 
 [environments.cloud.labels]
 project = "fabro"
@@ -64,8 +63,8 @@ team = "platform"
 
 <Note>
 Fabro also adds reserved labels to every managed Daytona sandbox:
-`sh.fabro.managed=true` and, when available, `sh.fabro.run_id=<run-id>`.
-These match Docker sandbox labels and are useful for filtering provider resources
+`petri.run=<run-id>`, `petri.lease=<lease>`, and `petri.workspace`.
+These match Petri's sandbox labels and are useful for filtering provider resources
 back to Fabro-managed runs. User-provided values for these reserved keys are
 overwritten.
 </Note>
@@ -119,24 +118,22 @@ memory = 8
 disk = 20
 ```
 
-Set either `image.docker` or `image.dockerfile`. `image.docker` can name any image that Daytona can pull, so a Dockerfile is not required. Use `image.dockerfile` when the image needs extra packages or other build steps:
+`image.docker` can name any image that Daytona can pull, so a Dockerfile is not required. `image.dockerfile` is not currently wired on Daytona: Petri builds runner snapshots from an image reference only, so only `image.docker` takes effect. The Docker provider does not build Dockerfiles either, and warns that it ignores `image.dockerfile`.
 
 ```toml title="run.toml"
 [environments.cloud.image]
-dockerfile = "FROM node:20-slim\nRUN apt-get update && apt-get install -y git"
+docker = "node:20-slim"
 ```
 
-The sandbox driver builds the image or Dockerfile into a Daytona snapshot named by its inputs (the image reference or Dockerfile text, the resources, and the Daytona API key) and creates the sandbox from it. If that snapshot already exists, it is reused immediately; otherwise the driver builds it and waits for it to reach `Active` state. A Dockerfile can be inline content or `{ path = "..." }`; paths are resolved relative to the TOML file that declares them and are bundled into run manifests.
-
-The exact `image.docker` value is part of the snapshot identity. Prefer a digest such as `registry.example.com/team/image@sha256:...` when the image must be reproducible. If a mutable tag moves without its text changing, the existing snapshot continues to be reused.
+The sandbox driver builds `image.docker` into a Daytona snapshot named `petri-runner-<sha256[:48]>`, computed from the image reference, the resources, the sandbox kind, and the region, and creates the sandbox from it. If that snapshot already exists, it is reused immediately; otherwise the driver builds it and waits for it to reach `Active` state. The exact `image.docker` value is part of the snapshot identity, so prefer a digest such as `registry.example.com/team/image@sha256:...` when the image must be reproducible. If a mutable tag moves without its text changing, the existing snapshot continues to be reused.
 
 <Note>
-If neither image source is configured, sandboxes are created from the `daytona-medium` snapshot, which includes standard dev tools such as Git. To force a new Dockerfile snapshot, change the Dockerfile text, for example by adding a comment.
+If no image is configured, sandboxes are created from a `petri-runner-*` snapshot of the pinned runner image `ghcr.io/lithoscomputer/ubuntu-24.04:dind-*`, which includes standard dev tools. There is no `daytona-medium` snapshot in Fabro's Daytona path. To force a rebuild of a snapshot, change the image reference (for example, to a new digest).
 </Note>
 
 ## Private repositories
 
-Fabro automatically clones the run's GitHub origin into the sandbox at `/home/daytona/workspace`. Public repositories work without extra configuration. Private repositories require GitHub access. In `token` mode, Fabro uses the stored token directly. In `app` mode, Fabro uses short-lived Installation Access Tokens scoped to the specific repository.
+Fabro automatically clones the run's GitHub origin into the sandbox at `/workspace`. Public repositories work without extra configuration. Private repositories require GitHub access. In `token` mode, Fabro uses the stored token directly. In `app` mode, Fabro uses short-lived Installation Access Tokens scoped to the specific repository.
 
 Set `[run.clone] enabled = false` when a workflow should start with an empty Daytona workspace instead of cloning the run origin:
 
@@ -183,7 +180,7 @@ To keep the sandbox alive after the run completes, pass `--preserve-sandbox` to 
 
 ## Sandbox lifecycle
 
-Each sandbox gets a unique timestamped name (e.g. `fabro-20260307-143022-a3f2`) and is created as ephemeral. By default, sandboxes are destroyed when the run finishes.
+Each sandbox gets a name like `petri-<run-id>-l<lease>`. Runs use retain-always lifecycle behavior: when a run finishes, Fabro stops the sandbox rather than destroying it; sandboxes are removed when the run is deleted or pruned.
 
 ### Preservation
 
@@ -210,20 +207,19 @@ When preserved, Fabro prints the sandbox name so you can find it in the [Daytona
 
 ### Auto-stop
 
-The `lifecycle.auto_stop` setting tells Daytona to stop the sandbox after a period of inactivity, saving costs for preserved or long-running sandboxes:
+Inactivity auto-stop (`lifecycle.auto_stop`) is accepted in configuration but is not currently applied to Daytona sandboxes: Petri forces the underlying auto-stop timers to zero, so the sandbox is not stopped for inactivity. Control whether a sandbox is retained with `lifecycle.preserve` instead.
 
 ```toml title="run.toml"
 [environments.cloud.lifecycle]
-auto_stop = "30m"
+# auto_stop is not currently applied by Petri
+preserve = false
 ```
 
-When `auto_stop` is unset, Fabro applies a default of 120 minutes so a sandbox leaked by an interrupted run is still reclaimed. Set `auto_stop = "0s"` to disable auto-stop and let the sandbox run indefinitely.
-
-Daytona counts inactivity from the last sandbox interaction (a command, file operation, or other API call). Time an agent spends on LLM inference does not touch the sandbox, so intervals shorter than your longest inference call risk stopping the sandbox mid-run.
+Do not rely on `auto_stop` to reclaim leaked or preserved sandboxes; use `fabro sandbox prune` or run deletion.
 
 ## Server defaults
 
-When running via `fabro server start`, the server config at `~/.fabro/settings.toml` can set default Daytona settings for all runs. Run config TOML values override server defaults. Labels are **merged** — run config labels win on key collisions. The `network` setting uses simple override (run config replaces the server default entirely).
+When running via `fabro server start`, the server config at `~/.fabro/settings.toml` can set default Daytona settings for all runs. Run config TOML values override server defaults. Labels are **merged**: run config labels win on key collisions. The `network` setting uses simple override (run config replaces the server default entirely).
 
 See [Server Configuration](/administration/server-configuration) for details.
 
@@ -237,11 +233,11 @@ If doctor reports missing scopes, regenerate the Daytona key with `write:snapsho
 
 ### Custom snapshot did not roll
 
-Custom Daytona snapshot names (`sandbox-driver-<hex>`) are computed by the sandbox driver from the image reference or Dockerfile, the resources, and the Daytona API key. For `image.docker`, use an immutable digest and update it when the image changes. For `image.dockerfile`, change the Dockerfile text under the selected `[environments.<slug>.image]`.
+Custom Daytona snapshot names (`petri-runner-<sha256[:48]>`) are computed from the image reference, the resources, the sandbox kind, and the region. The Daytona API key is not part of the identity, and Dockerfiles are not supported on Daytona, so only `image.docker` contributes. For `image.docker`, use an immutable digest and update it when the image changes.
 
 ### "Timed out waiting for snapshot to become active"
 
-Snapshot creation took longer than the sandbox driver's build budget. This can happen with large Dockerfiles. Check the snapshot status in the Daytona dashboard — it may still be building. Subsequent runs will reuse the snapshot once it's active.
+Snapshot creation took longer than the sandbox driver's build budget. This can happen with large Dockerfiles. Check the snapshot status in the Daytona dashboard; it may still be building. Subsequent runs will reuse the snapshot once it's active.
 
 ### Git clone fails for private repositories
 
@@ -249,10 +245,10 @@ See [Private repositories](#private-repositories) above. You need a GitHub App c
 
 ### Stall watchdog kills the run
 
-Long-running commands in Daytona sandboxes may trigger the 1800-second stall watchdog if they don't produce events. For workflows with long-running operations, increase the `stall_timeout` in the workflow graph:
+Long-running commands in Daytona sandboxes may trigger the 1800-second stall watchdog if they don't produce events. For workflows with long-running operations, increase the `stall_timeout` in the workflow graph (durations need a unit, such as `"3600s"` or `"60m"`; set `"0s"` to disable the watchdog):
 
 ```dot
 digraph Example {
-    graph [stall_timeout="1200"]
+    graph [stall_timeout="3600s"]
 }
 ```

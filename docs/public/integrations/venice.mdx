@@ -40,14 +40,14 @@ Fabro sends bearer-authenticated Chat Completions requests to `https://api.venic
 |---|---|---:|---:|---|
 | `kimi-k3` | `kimi-k3` | 1,000,000 | 131,072 | Alias `kimi` |
 | `kimi-k3-fast` | `kimi-k3-fast-api` | 1,000,000 | 131,072 | Alias `kimi-fast` |
-| `grok-4.6` | `grok-4-6` | 500,000 | 32,000 | Aliases `grok`, `grok46`, `grok-46` |
+| `grok-4.6` | `grok-4-6` | 500,000 | 200,000 | Aliases `grok`, `grok46`, `grok-46` |
 | `glm-5.3` | `z-ai-glm-5-3` | 1,000,000 | 131,072 | Aliases `glm`, `glm5`, `glm53`, `glm5.3`, `glm-5-3` |
 | `deepseek-v4-flash` | `deepseek-v4-flash-0731` | 1,000,000 | 32,768 | Provider default; aliases `deepseek`, `deepseek-v4`, `deepseek-flash` |
 | `deepseek-v4-pro` | `deepseek-v4-pro-0813` | 1,000,000 | 32,768 | Alias `deepseek-pro` |
 | `qwen3.8-max` | `qwen-3-8-max` | 1,000,000 | 131,072 | Aliases `qwen`, `qwen-max`, `qwen3.8`, `qwen-3.8`, `qwen38`, `qwen-3.8-max`, `qwen38-max` |
-| `qwen3.8-27b` | `qwen-3-8-27b` | 262,144 | 131,072 | Aliases `qwen-27b`, `qwen-3.8-27b`, `qwen38-27b` |
+| `qwen3.8-27b` | `qwen-3-8-27b` | 262,144 | 65,536 | Aliases `qwen-27b`, `qwen-3.8-27b`, `qwen38-27b` |
 
-Venice API IDs are also valid provider-scoped selectors. Fabro persists the stable Fabro slug and the selected provider when it creates a run.
+The table above covers Fabro's open-weights Venice roster. Venice also offers Claude and GPT routes that Fabro ships in the same catalog; run `fabro model list --provider venice` for the complete list. Venice API IDs are also valid provider-scoped selectors. Fabro persists the stable Fabro slug and the selected provider when it creates a run.
 
 ## Select Venice explicitly
 
@@ -92,10 +92,11 @@ Fabro exposes native reasoning-effort controls only when Venice supports them:
 
 | Model | Reasoning effort values |
 |---|---|
-| `grok-4.6` | `low`, `medium`, `high`, `xhigh` |
-| `glm-5.3` | `low`, `high`, `max` |
-| `deepseek-v4-flash` | `low`, `high`, `max` |
-| `qwen3.8-27b` | `low`, `medium`, `xhigh` |
+| `kimi-k3` | `low`, `high`, `max` |
+| `kimi-k3-fast` | Venice reasoning-effort control exposed |
+| `grok-4.6` | Venice reasoning-effort control exposed |
+| `deepseek-v4-flash` | Venice reasoning-effort control exposed |
+| `qwen3.8-27b` | Venice reasoning-effort control exposed |
 
 The other models reason by default but do not expose a Venice reasoning-effort control. Fabro omits sampling parameters for Kimi and DeepSeek because those routes do not use them with their configured reasoning behavior.
 
@@ -118,8 +119,8 @@ Fabro reports cached input separately when Venice returns cache usage for the se
 
 ## Troubleshooting
 
-**"No credential was found for provider 'venice'"** — Store `VENICE_API_KEY` in the server vault with `fabro provider login --provider venice`. Pass `--server` when configuring a remote Fabro server.
+**credentials are not configured for provider `venice`**. Store `VENICE_API_KEY` in the server vault with `fabro provider login --provider venice`. Pass `--server` when configuring a remote Fabro server.
 
-**A shared model used another provider** — Pin Venice with `--provider venice` or `provider: venice` in the workflow stylesheet. Unqualified selectors use provider priority.
+**A shared model used another provider**. Pin Venice with `--provider venice` or `provider: venice` in the workflow stylesheet. Unqualified selectors use provider priority.
 
-**A Venice API model ID is rejected without a provider** — Use the stable Fabro slug for portable selection, or qualify the API ID with the provider, such as `venice:qwen-3-8-max`.
+**A Venice API model ID is rejected without a provider**. Use the stable Fabro slug for portable selection, or qualify the API ID with the provider, such as `venice:qwen-3-8-max`.

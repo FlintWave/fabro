@@ -24,8 +24,12 @@ After each node finishes, Fabro stages file changes and creates a commit on the 
 ```
 fabro(01JKXYZ...): plan (succeeded)
 
+⚒️ Generated with [Fabro](https://fabro.sh)
+
 Fabro-Run: 01JKXYZ...
-Fabro-Completed: 2
+Fabro-Execution: ...
+Fabro-Firing: ...
+Fabro-Attempt: ...
 ```
 
 The commit message follows a structured format:
@@ -33,10 +37,14 @@ The commit message follows a structured format:
 | Part | Description |
 |---|---|
 | Subject line | `fabro({run_id}): {node_id} ({status})` |
+| Footer | `⚒️ Generated with [Fabro](https://fabro.sh)` |
 | `Fabro-Run` trailer | The run ID |
-| `Fabro-Completed` trailer | Number of completed nodes so far |
+| `Fabro-Execution` trailer | Execution ordinal for the run branch |
+| `Fabro-Firing` trailer | Firing ordinal for the engine pass |
+| `Fabro-Attempt` trailer | Attempt number for the stage |
+| `Co-Authored-By` trailer | Added only when the run author is not the default Fabro identity |
 
-The `git_commit_sha` in a `checkpoint.completed` event identifies the run branch commit. New commits do not include a `Fabro-Checkpoint` trailer.
+The `git_commit_sha` in a `checkpoint.completed` event identifies the run branch commit.
 
 Fabro disables Git commit and tag signing for checkpoint commits created inside a sandbox. Your personal or repository-level signing settings can stay enabled, but sandbox bookkeeping does not need access to your signing key.
 
@@ -89,7 +97,7 @@ Resume an interrupted run from its durable checkpoint:
 fabro resume 01JKXYZ
 ```
 
-Fabro resolves the run by ID prefix, validates that durable state contains a checkpoint, and asks the server to continue execution. No workflow file or override flags are needed — all configuration is restored from persisted state.
+Fabro resolves the run by ID prefix, validates that durable state contains a checkpoint, and asks the server to continue execution. No workflow file or override flags are needed; all configuration is restored from persisted state.
 
 <Accordion title="What happens during resume">
 1. Fabro looks up the run directory by ID prefix

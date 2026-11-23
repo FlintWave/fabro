@@ -11,11 +11,11 @@ Child runs are full workflow runs. Each child has its own run ID, workflow, life
 
 Use child runs when the unit of work is large enough to deserve its own workflow run:
 
-- **Parallel workstreams** - launch implementation, review, migration, or validation runs at the same time.
-- **Specialized workflows** - delegate to purpose-built workflows for different repos, services, or review types.
-- **Long-running work** - let the parent keep coordinating while children run independently.
-- **Manager patterns** - build a parent workflow that creates workers, watches progress, gathers results, and decides what happens next.
-- **Variants and attempts** - run multiple approaches as separate durable runs with separate outputs.
+- Parallel workstreams. Launch implementation, review, migration, or validation runs at the same time.
+- Specialized workflows. Delegate to purpose-built workflows for different repos, services, or review types.
+- Long-running work. Let the parent keep coordinating while children run independently.
+- Manager patterns. Build a parent workflow that creates workers, watches progress, gathers results, and decides what happens next.
+- Variants and attempts. Run multiple approaches as separate durable runs with separate outputs.
 
 For small subtasks inside one agent stage, use [sub-agents](/agents/subagents). For reusable workflow structure inside one run, use [sub-workflows](/tutorials/sub-workflow) or [imports](/workflows/imports).
 

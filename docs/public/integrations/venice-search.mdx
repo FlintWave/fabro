@@ -54,24 +54,24 @@ See the [`web_search` tool reference](/agents/tools#web_search) for parameters a
 
 `web_search` is classified as a `shell` category tool, requiring the `full` [permission level](/agents/permissions) for auto-approval. At lower permission levels:
 
-- **Interactive mode** — the user is prompted to approve each call
-- **Non-interactive mode** (`--auto-approve`) — calls are denied
+- Interactive mode. The user is prompted to approve each call
+- Non-interactive mode (`--auto-approve`). Calls are denied
 
 ## Troubleshooting
 
-**"VENICE_API_KEY is not configured"** — Add the key with `fabro secret set VENICE_API_KEY <key>` or `fabro provider login --provider venice`. Run `fabro doctor` to verify.
+**secret `VENICE_API_KEY` for provider `venice` is unavailable**. Add the key with `fabro secret set VENICE_API_KEY <key>` or `fabro provider login --provider venice`. Run `fabro doctor` to verify.
 
-**"Venice Search API returned status 401"** — The API key is invalid or expired. Create a new key at [venice.ai](https://venice.ai).
+**"Venice Search API returned status 401"**. The API key is invalid or expired. Create a new key at [venice.ai](https://venice.ai).
 
-**"Venice Search API returned status 402"** — The Venice account is out of credits. The error may include a remaining-balance hint.
+**"Venice Search API returned status 402"**. The Venice account is out of credits. The error may include a remaining-balance hint.
 
-**"Venice Search API returned status 429"** — Rate limit exceeded (20 requests per minute on Venice Search). Reduce the frequency of `web_search` calls.
+**"Venice Search API returned status 429"**. Rate limit exceeded (20 requests per minute on Venice Search). Reduce the frequency of `web_search` calls.
 
 ## Further reading
 
 <Columns cols={2}>
   <Card title="Tools" icon="wrench" href="/agents/tools#web_search">
-    Full `web_search` tool reference — parameters, output format, and error handling.
+    Full `web_search` tool reference. Parameters, output format, and error handling.
   </Card>
   <Card title="Brave Search" icon="globe" href="/integrations/brave-search">
     Direct Brave Search backend, preferred whenever its key is configured.

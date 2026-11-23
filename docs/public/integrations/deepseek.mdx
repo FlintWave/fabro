@@ -125,11 +125,11 @@ See the [Fireworks AI integration](/integrations/fireworks) and [OpenRouter inte
 
 ## Troubleshooting
 
-**"No API key configured"** — Store `DEEPSEEK_API_KEY` on the target server with `fabro provider login --provider deepseek`. The server runtime resolves the key from its vault, not from process env.
+**"No API key configured"**: Store `DEEPSEEK_API_KEY` on the target server with `fabro provider login --provider deepseek`. The server runtime resolves the key from its vault, not from process env.
 
-**Unknown model** — Use `deepseek-v4-flash` or `deepseek-v4-pro`. The retired `deepseek-chat` and `deepseek-reasoner` API IDs are not in the Fabro catalog.
+**Unknown model**: Use `deepseek-v4-flash` or `deepseek-v4-pro`. The retired `deepseek-chat` and `deepseek-reasoner` API IDs are not in the Fabro catalog.
 
-**A tool continuation returns HTTP 400** — Keep the assistant thinking content in conversation history. Fabro does this automatically when it replays tool-call turns.
+**A tool continuation returns HTTP 400**: Keep the assistant thinking content in conversation history. Fabro does this automatically when it replays tool-call turns.
 
 ## Further reading
 

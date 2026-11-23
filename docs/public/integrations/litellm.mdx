@@ -99,11 +99,11 @@ The provider's `default_model` names its default. You may also mark one small ut
 
 ## Troubleshooting
 
-**"No API key configured"** — For runs, store `LITELLM_API_KEY` in the target server vault with `fabro secret set LITELLM_API_KEY ...`. Exporting it in the server's shell has no effect on runs: workers start from a cleared environment and provider keys are not inherited. For direct `fabro exec` (no server target), export `LITELLM_API_KEY` in the invoking shell or store it in the local secret store. SDK callers must choose the appropriate credential source.
+**"No API key configured"**: For runs, store `LITELLM_API_KEY` in the target server vault with `fabro secret set LITELLM_API_KEY ...`. Exporting it in the server's shell has no effect on runs: workers start from a cleared environment and provider keys are not inherited. For direct `fabro exec` (no server target), export `LITELLM_API_KEY` in the invoking shell or store it in the local secret store. SDK callers must choose the appropriate credential source.
 
-**Connection refused** — Confirm the LiteLLM proxy is running and that `base_url` is reachable from the Fabro process. For Docker deployments, `localhost` means the Fabro container unless you point it at a host or service name.
+**Connection refused**: Confirm the LiteLLM proxy is running and that `base_url` is reachable from the Fabro process. For Docker deployments, `localhost` means the Fabro container unless you point it at a host or service name.
 
-**Unknown model from LiteLLM** — Check that the model's `api_model` matches the model name configured in LiteLLM, then run `fabro model test --model <fabro-model-id>`.
+**Unknown model from LiteLLM**: Check that the model's `api_model` matches the model name configured in LiteLLM, then run `fabro model test --model <fabro-model-id>`.
 
 ## Further reading
 

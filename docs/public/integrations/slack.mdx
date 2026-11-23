@@ -5,7 +5,7 @@ description: "Answer human-in-the-loop questions and receive run lifecycle notif
 
 Fabro's Slack integration lets your team answer [human-in-the-loop](/workflows/human-in-the-loop) questions without leaving Slack and receive opt-in run lifecycle notifications. When a workflow reaches a human gate, Fabro posts an interactive message to a Slack channel with buttons for each option. Team members click a button (or reply in a thread for freeform input), and the workflow continues.
 
-The integration uses Slack's [Socket Mode](https://api.slack.com/apis/socket-mode), so no public URL or webhook endpoint is required — Fabro connects outbound over a WebSocket.
+The integration uses Slack's [Socket Mode](https://api.slack.com/apis/socket-mode), so no public URL or webhook endpoint is required. Fabro connects outbound over a WebSocket.
 
 ## What it looks like
 
@@ -56,16 +56,16 @@ For freeform questions, Fabro posts a message asking the user to reply in the th
 1. In the app settings sidebar, go to **Socket Mode**
 2. Toggle **Enable Socket Mode** on
 3. Create an **App-Level Token** with the `connections:write` scope
-4. Copy the token (starts with `xapp-`) — this is your `FABRO_SLACK_APP_TOKEN`
+4. Copy the token (starts with `xapp-`). This is your `FABRO_SLACK_APP_TOKEN`
 
 ### 3. Add bot token scopes
 
 1. Go to **OAuth & Permissions** in the sidebar
 2. Under **Bot Token Scopes**, add the scopes you need:
-   - `chat:write` — required to post and update Slack messages
-   - `chat:write.public` — optional, only needed to post lifecycle notifications or interview prompts to public channels without inviting the bot first
-   - `channels:history` — optional, only needed for freeform thread replies in public channels
-   - `groups:history` — optional, only needed for freeform thread replies in private channels
+   - `chat:write`: required to post and update Slack messages
+   - `chat:write.public`: optional, only needed to post lifecycle notifications or interview prompts to public channels without inviting the bot first
+   - `channels:history`: optional, only needed for freeform thread replies in public channels
+   - `groups:history`: optional, only needed for freeform thread replies in private channels
 
 ### 4. Enable interactivity
 
@@ -85,8 +85,8 @@ Skip this step if you only use lifecycle notifications, buttons, confirmations, 
 1. Go to **Event Subscriptions** in the sidebar
 2. Toggle **Enable Events** on
 3. Under **Subscribe to bot events**, add:
-   - `message.channels` — receive public channel messages, needed for freeform thread replies in public channels
-   - `message.groups` — receive private channel messages, needed for freeform thread replies in private channels
+   - `message.channels`: receive public channel messages, needed for freeform thread replies in public channels
+   - `message.groups`: receive private channel messages, needed for freeform thread replies in private channels
 
 If you add scopes or event subscriptions after installing the app, reinstall it so Slack grants the new permissions.
 
@@ -94,7 +94,7 @@ If you add scopes or event subscriptions after installing the app, reinstall it 
 
 1. Go to **Install App** in the sidebar
 2. Click **Install to Workspace** and authorize
-3. Copy the **Bot User OAuth Token** (starts with `xoxb-`) — this is your `FABRO_SLACK_BOT_TOKEN`
+3. Copy the **Bot User OAuth Token** (starts with `xoxb-`). This is your `FABRO_SLACK_BOT_TOKEN`
 
 ### 7. Configure Fabro
 
@@ -151,7 +151,7 @@ You can also check **Settings > Integrations** in the web UI. The Slack row is c
 
 ## How it works
 
-Fabro uses the same [web interviewer](/execution/interviews#web) that powers the web UI. When a human gate fires:
+Fabro uses the same [web interviewer](/human-tools/interviews#web) that powers the web UI. When a human gate fires:
 
 1. Fabro builds a [Block Kit](https://api.slack.com/block-kit) message from the question, stage hint, upstream context, optional run link, and answer controls
 2. Posts the message to the configured Slack channel
@@ -159,10 +159,10 @@ Fabro uses the same [web interviewer](/execution/interviews#web) that powers the
 
 When a user interacts:
 
-- **Button click** — Slack delivers the interaction over the Socket Mode WebSocket. Fabro maps the button's action ID back to the question and submits the answer. The original message is updated to show the selection.
-- **Thread reply** (freeform) — The user replies in the message thread. Fabro receives the reply as a message event, matches it to the pending question via the thread timestamp, and submits the text as the answer.
+- **Button click**. Slack delivers the interaction over the Socket Mode WebSocket. Fabro maps the button's action ID back to the question and submits the answer. The original message is updated to show the selection.
+- **Thread reply** (freeform). The user replies in the message thread. Fabro receives the reply as a message event, matches it to the pending question via the thread timestamp, and submits the text as the answer.
 
-The connection is maintained with automatic reconnection and exponential backoff (1s initial, 30s max). If the WebSocket disconnects, Fabro reconnects transparently — no manual intervention needed.
+The connection is maintained with automatic reconnection and exponential backoff (1s initial, 30s max). If the WebSocket disconnects, Fabro reconnects transparently. No manual intervention needed.
 
 ## Run lifecycle notifications
 
@@ -246,7 +246,7 @@ Both must be set for the Slack integration to activate. If either is missing or 
 
 ## Limitations
 
-- **Single workspace** — Fabro connects to one Slack workspace at a time.
-- **One answer per question** — The first person to click a button or reply in a thread provides the answer. Subsequent interactions on the same question are ignored.
-- **No Slack steering** — Slack does not support [steering](/human-tools/steering) running agents.
-- **Lifecycle notifications are one-way** — `run.started`, `run.completed`, and `run.failed` messages are posted once per matching route and are not updated later.
+- Single workspace. Fabro connects to one Slack workspace at a time.
+- One answer per question. The first person to click a button or reply in a thread provides the answer. Subsequent interactions on the same question are ignored.
+- No Slack steering. Slack does not support [steering](/human-tools/steering) running agents.
+- Lifecycle notifications are one-way. `run.started`, `run.completed`, and `run.failed` messages are posted once per matching route and are not updated later.

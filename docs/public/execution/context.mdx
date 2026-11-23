@@ -3,11 +3,11 @@ title: "Context"
 description: "How data flows between workflow stages"
 ---
 
-Every workflow run has a **context** — a shared key-value store that carries data between stages. When an agent writes code, a command captures test output, or a human makes a selection, the results are recorded as context updates. Downstream nodes can read these values to make decisions, build prompts, and route execution.
+Every workflow run has a **context**: a shared key-value store that carries data between stages. When an agent writes code, a command captures test output, or a human makes a selection, the results are recorded as context updates. Downstream nodes can read these values to make decisions, build prompts, and route execution.
 
 ## How context flows
 
-The context starts empty at the beginning of a run. As each stage completes, its outcome includes a set of **context updates** — key-value pairs that are merged into the shared context. Later stages see all updates from earlier stages.
+The context starts empty at the beginning of a run. As each stage completes, its outcome includes a set of **context updates**: key-value pairs that are merged into the shared context. Later stages see all updates from earlier stages.
 
 ```
 Start → Plan → Implement → Test → Exit
@@ -23,8 +23,8 @@ Context is thread-safe and shared across the entire run. Parallel branches recei
 
 Agents do not have a tool to query the context store directly. Instead, context is made available through two mechanisms:
 
-- **Preamble injection** — When a node starts, Fabro assembles a preamble from the current context and prepends it to the node's prompt. The [fidelity setting](#fidelity-controlling-agent-context) controls how detailed this preamble is.
-- **Context updates** — Agents can write to the context by including a `context_updates` object in a JSON response. See [Transitions](/workflows/transitions#agent-transitions) for the response format.
+- Preamble injection: when a node starts, Fabro assembles a preamble from the current context and prepends it to the node's prompt. The [fidelity setting](#fidelity-controlling-agent-context) controls how detailed this preamble is.
+- Context updates: agents can write to the context by including a `context_updates` object in a JSON response. See [Transitions](/workflows/transitions#agent-transitions) for the response format.
 
 ## Keys set by handlers
 
@@ -119,7 +119,7 @@ gate -> deploy [condition="outcome=succeeded && context.tests_passed=true"]
 gate -> fix    [condition="outcome=failed"]
 ```
 
-The `context.` prefix is optional — `tests_passed=true` and `context.tests_passed=true` are equivalent.
+The `context.` prefix is optional, and `tests_passed=true` and `context.tests_passed=true` are equivalent.
 
 Engine-managed keys like `internal.node_visit_count` work in conditions too. This is useful for [fixed-count loops](/tutorials/branch-loop#fixed-count-loops):
 
@@ -130,7 +130,7 @@ gate -> improve
 
 ## Fidelity: Controlling agent context
 
-When a new agent or prompt node starts, Fabro assembles a **preamble** — a summary of what happened in prior stages. The **fidelity** setting controls how detailed this preamble is.
+When a new agent or prompt node starts, Fabro assembles a **preamble**: a summary of what happened in prior stages. The **fidelity** setting controls how detailed this preamble is.
 
 | Fidelity | Behavior |
 |---|---|
@@ -139,23 +139,23 @@ When a new agent or prompt node starts, Fabro assembles a **preamble** — a sum
 | `summary:high` | Detailed per-stage Markdown report. |
 | `summary:medium` | Moderate detail with outcomes and notable findings (~1500 token target). |
 | `summary:low` | Brief summary with just outcomes per stage (~600 token target). |
-| `truncate` | Minimal — only the goal and run ID. |
+| `truncate` | Minimal: only the goal and run ID. |
 
 ### Setting fidelity
 
 Fidelity can be set at three levels. The first match wins:
 
-1. **Edge attribute** — Set `fidelity` on an edge to control the transition into a specific node:
+1. Edge attribute: set `fidelity` on an edge to control the transition into a specific node:
    ```dot
    plan -> implement [fidelity="full"]
    ```
 
-2. **Node attribute** — Set `fidelity` on a node to control all transitions into it:
+2. Node attribute: set `fidelity` on a node to control all transitions into it:
    ```dot
    implement [fidelity="full"]
    ```
 
-3. **Graph default** — Set `default_fidelity` on the graph for a run-wide default:
+3. Graph default: set `default_fidelity` on the graph for a run-wide default:
    ```dot
    digraph Example {
        graph [default_fidelity="summary:medium"]
@@ -224,8 +224,8 @@ The preamble includes:
 - The workflow goal
 - A summary of completed stages (format depends on fidelity level)
 - Handler-specific details:
-  - **Command nodes** — the script that ran and the ordered output
-  - **Agent/prompt nodes** — the model used, token counts, and files touched
+  - Command nodes: the script that ran and the ordered output
+  - Agent/prompt nodes: the model used, token counts, and files touched
 - Non-internal context values that weren't already rendered inline
 
 Internal keys (prefixed with `internal.`, `current`, `graph.`, `thread.`, `response.`) are excluded from preambles to avoid noise.
@@ -272,7 +272,7 @@ This keeps the durable context lean and portable while still giving downstream s
 
 During long-running agent sessions, the conversation history can grow large enough to exceed the LLM's context window. **Context compaction** automatically summarizes older turns and replaces them with a structured summary, keeping the session running without manual intervention.
 
-Compaction is always enabled and runs with hardcoded defaults — there are no user-facing configuration options.
+Compaction is always enabled and runs with hardcoded defaults. There are no user-facing configuration options.
 
 ### When it triggers
 
@@ -280,28 +280,30 @@ After every assistant turn, Fabro estimates the total token usage of the system 
 
 ### How it works
 
-1. **Split history** — The conversation is divided into older turns (to be summarized) and the most recent **6 turns** (preserved verbatim).
-2. **Render old turns** — Older turns are serialized to a human-readable text format. Tool call arguments and tool results are truncated to 500 characters each.
-3. **Summarize via LLM** — Fabro makes a non-streaming LLM call (using the same model and provider as the agent session) with a structured summarization prompt. The summary uses these sections:
-   - **Goal** — what the user asked for
-   - **Progress** — what was accomplished, with file paths and key decisions
-   - **Key Decisions** — important choices and their rationale
-   - **Failed Approaches** — what was tried and didn't work
-   - **Open Issues** — remaining bugs, edge cases, or TODOs
-   - **Next Steps** — what should happen next
-   - **File Operations** — if the agent has tracked file modifications, this section is copied verbatim into the summary
-4. **Replace history** — All old turns are removed and replaced with a single `[Context Summary]` system message containing the structured summary. The preserved recent turns remain unchanged.
+1. Split history: the conversation is divided into older turns (to be summarized) and the most recent **6 turns** (preserved verbatim).
+2. Render old turns: older turns are serialized to a human-readable text format. Tool call arguments and tool results are truncated to 500 bytes each.
+3. Summarize via LLM: Fabro makes a non-streaming LLM call (using the same model and provider as the agent session) with a structured summarization prompt. The summary uses these sections:
+   - Goal: what the user asked for
+   - Progress: what was accomplished, with file paths and key decisions
+   - Key Decisions: important choices and their rationale
+   - Failed Approaches: what was tried and didn't work
+   - Open Issues: remaining bugs, edge cases, or TODOs
+   - Next Steps: what should happen next
+   - File Operations: if the agent has tracked file modifications, this section is copied verbatim into the summary
+4. Replace history: all old turns are removed and replaced with a single `[Context Summary]` system message containing the structured summary. The preserved recent turns remain unchanged.
 
 ### Failure behavior
 
-Compaction failures are **non-fatal**. If the summarization LLM call fails, Fabro emits an `Agent.Error` event and the session continues with the original uncompacted history. The next assistant turn will trigger another compaction attempt.
+Compaction failures are **non-fatal**. If the summarization LLM call fails, Fabro emits an `agent.compaction.failed` event (along with an `agent.error` event) and the session continues with the original uncompacted history. The failure is latched for the rest of the current prompt, so compaction is not retried on later assistant turns; the next user message (or a new prompt) arms another attempt.
 
 ### Events
 
-Compaction emits three events to the [event stream](/execution/observability#event-stream):
+Compaction emits events to the [event stream](/execution/observability#event-stream):
 
 | Event | When | Key fields |
 |---|---|---|
-| `Agent.Warning` (kind: `context_window`) | Token estimate exceeds 80% of context window | `kind`, `message`, `details` (contains `estimated_tokens`, `context_window_size`, `usage_percent`) |
-| `Agent.CompactionStarted` | Compaction begins | `estimated_tokens`, `context_window_size` |
-| `Agent.CompactionCompleted` | Summary generated and history replaced | `original_turn_count`, `preserved_turn_count`, `summary_token_estimate`, `tracked_file_count` |
+| `agent.warning` (kind: `context_window`) | Token estimate exceeds 80% of context window | `kind`, `message`, `details` (contains `estimated_tokens`, `context_window_size`, `usage_percent`) |
+| `agent.compaction.started` | Compaction begins | `estimated_tokens`, `context_window_size` |
+| `agent.compaction.completed` | Summary generated and history replaced | `original_turn_count`, `preserved_turn_count`, `summary_token_estimate`, `tracked_file_count` |
+| `agent.compaction.failed` | Summary LLM call fails; history unchanged | `reason`, `error` |
+| `agent.compaction.cancelled` | Compaction cancelled before history changes | `reason` |
