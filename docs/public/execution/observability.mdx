@@ -20,13 +20,13 @@ Every workflow run emits a sequence of canonical **run event envelopes** that ar
 Event names use lowercase dot notation, for example:
 
 - `run.started`
-- `step.started`
-- `step.finished`
+- `stage.started`
+- `stage.completed`
 - `agent.tool.started`
 - `agent.tool.completed`
+- `sandbox.ready`
 - `todo.updated`
 - `parallel.branch.completed`
-- `run.stalled`
 
 ### Envelope format
 
@@ -34,23 +34,18 @@ Each serialized event envelope has a stable JSON shape:
 
 ```json
 {
+  "id": "01960d0c-5d16-7d6e-8f61-9fd6f4a532b5",
+  "ts": "2026-03-30T12:00:01.000Z",
   "run_id": "01JQ...",
-  "stream_seq": 42,
-  "kind": "petri",
-  "id": "coordinator/3/0",
-  "recorded_at": 1711800001000,
-  "item": {
-    "id": {"log": "coordinator", "seq": 3, "index": 0},
-    "record": {
-      "body": {
-        "event": "agent.tool.started",
-        "properties": {
-          "tool_name": "shell",
-          "tool_call_id": "call_1",
-          "arguments": {"command": "cargo test"}
-        }
-      }
-    }
+  "event": "agent.tool.started",
+  "session_id": "ses_child",
+  "parent_session_id": "ses_parent",
+  "node_id": "implement",
+  "node_label": "Implement",
+  "properties": {
+    "tool_name": "shell",
+    "tool_call_id": "call_1",
+    "arguments": {"command": "cargo test"}
   }
 }
 ```
@@ -59,14 +54,17 @@ Envelope fields:
 
 | Field | Description |
 |---|---|
+| `id` | Unique event id |
+| `ts` | UTC timestamp |
 | `run_id` | Workflow run id |
-| `stream_seq` | Durable per-run delivery sequence; the cursor used to resume |
-| `kind` | `petri` for a Petri run event, `platform` for a stored Fabro platform record |
-| `id` | The item's own identity, for deduplication |
-| `recorded_at` | Milliseconds since the Unix epoch when the item's record was appended |
-| `item` | The Petri `RunEvent` or stored platform record, unchanged |
+| `event` | Event name |
+| `session_id` | Session that emitted the event, when applicable |
+| `parent_session_id` | Immediate parent session for forwarded child events |
+| `node_id` | Node or branch id, when applicable |
+| `node_label` | Human-facing label for `node_id`, when applicable |
+| `properties` | Event-specific payload |
 
-The Petri event's name lives inside `item` (see `RunStreamItem::name`), typically at `item.record.body.event` or `item.derived.event`. Session, node, and other event-specific fields, formerly top-level, now live inside that nested `item` payload.
+Only `id`, `ts`, `run_id`, and `event` are always present. Optional fields are omitted when they do not apply.
 
 For runtime `for_each` branches, `parallel.branch.started` and
 `parallel.branch.completed` include the zero-based `index` and an optional
@@ -81,13 +79,14 @@ Because event payload lives in `properties`, most shell queries should look ther
 
 ```bash
 # Count tool calls in a run
-fabro events 01JKXYZ... | jq -r 'select(.item.record.body.event == "agent.tool.started") | .item.record.body.properties.tool_name' | wc -l
+fabro events 01JKXYZ... | jq -r 'select(.event == "agent.tool.started") | .properties.tool_name' | wc -l
 
-# Find step failures
-fabro events 01JKXYZ... | jq 'select(.item.record.body.event == "step.finished" and .item.record.body.outcome == "failed")'
+# Find stage failures
+fabro events 01JKXYZ... | jq 'select(.event == "stage.failed")'
 
 # See which edges were taken
-fabro events 01JKXYZ... | jq '{from: .item.record.body.from_node, to: .item.record.body.to_node, label: .item.record.body.label}' | head
+jq '{from: .properties.from_node, to: .properties.to_node, label: .properties.label}' \
+  <(fabro events 01JKXYZ...) | head
 ```
 
 If you need files on disk for offline analysis, `fabro dump` exports `events.jsonl` plus run-state projections.
@@ -98,13 +97,13 @@ Common categories include:
 
 | Category | Example events |
 |---|---|
-| Run lifecycle | `run.started`, `run.finished`, `run.notice` (platform record) |
-| Stage (step) lifecycle | `step.started`, `step.finished`, `stage.prompt` |
+| Run lifecycle | `run.started`, `run.completed`, `run.failed`, `run.notice` |
+| Stage lifecycle | `stage.started`, `stage.completed`, `stage.failed`, `stage.retrying` |
 | Agent activity | `agent.message`, `agent.tool.started`, `agent.warning`, `agent.sub.spawned` |
 | Agent todo state | `todo.created`, `todo.updated`, `todo.deleted` |
-| Routing | `edge.selected`, `loop.restart`, `routing.resolved` |
-| Git and checkpoints | `checkpoint` (platform record), `run.diff` (platform record) |
-| Platform records | `run.created`, `run.lifecycle`, `artifact.collected`, plus other `PlatformRecordKind` values |
+| Routing | `edge.selected`, `loop.restart`, `parallel.started` |
+| Git and checkpoints | `checkpoint.completed`, `git.commit`, `git.push` |
+| Setup and sandbox | `sandbox.initializing`, `sandbox.ready`, `setup.started` |
 
 `agent.message` is the canonical post-response event for agent turns. When context-window data is available, it appears on the message payload as `context_window`; there is no separate context-window snapshot event to consume.
 
