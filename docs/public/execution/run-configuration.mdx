@@ -4,7 +4,7 @@ description: "Configure workflow runs with TOML files"
 ---
 
 A workflow config is a TOML file that bundles a workflow graph with its
-execution behavior — the goal, model, inputs, hooks, and other
+execution behavior, the goal, model, inputs, hooks, and other
 workflow-owned settings. Instead of passing a dozen CLI flags, check
 `workflow.toml` into version control and launch it with a single command:
 
@@ -150,7 +150,7 @@ For a qualified fallback, the selector may be that provider's canonical model ID
 
 This chain applies only when the original request resolves to `kimi-k3`. It tries direct Moonshot AI, then OpenRouter, then Claude Opus. The OpenRouter entry could equivalently be written as `"openrouter:moonshotai/kimi-k3"` using its API ID. Legacy `provider/model` fallback references remain accepted but are normalized to `provider:model`.
 
-A colon alone does not make a reference qualified. Many model IDs contain one — ollama `name:tag` values, Bedrock inference-profile IDs and ARNs — so Fabro treats the reference as qualified only when the text before the first `:` names a known provider. `"llama3:8b"` stays a single model ID, while `"ollama:llama3:8b"` pins the `ollama` provider and passes `llama3:8b` as the selector.
+A colon alone does not make a reference qualified. Many model IDs contain one: `ollama` `name:tag` values, Bedrock inference-profile IDs, and ARNs. So Fabro treats the reference as qualified only when the text before the first `:` names a known provider. `"llama3:8b"` stays a single model ID, while `"ollama:llama3:8b"` pins the `ollama` provider and passes `llama3:8b` as the selector.
 
 At run creation, Fabro resolves the primary selector, every node selector, and the fallback table against the server's ready-provider snapshot. It persists the selected canonical model slug and provider, so resuming the run does not choose a different provider just because credentials or priorities changed. `fabro validate` only checks the table's TOML shape because it is offline and has no server model catalog. Use `fabro preflight` for catalog and provider checks.
 
@@ -380,7 +380,7 @@ memory = "8GB"
 | `network.allow` | CIDRs for `cidr_allow_list`; entries are validated as CIDRs. |
 | `lifecycle.preserve` | Keep the created sandbox after the run finishes. |
 | `lifecycle.stop_on_terminal` | Stop the sandbox when the run reaches a terminal state. |
-| `lifecycle.auto_stop` | Daytona auto-stop duration, such as `"30m"`. Defaults to `"120m"`; `"0s"` disables auto-stop. |
+| `lifecycle.auto_stop` | Daytona auto-stop duration, such as `"30m"`. Fabro sets no default, and the value is not currently applied to Daytona sandboxes; see [Daytona](/integrations/daytona). |
 | `labels` | Provider labels. Merge by key across layers. |
 | `env` | Environment variables passed to command and agent execution. Merge by key across layers. |
 
@@ -438,7 +438,7 @@ Each entry is a full `owner/repository` slug. Every repository in the effective 
 
 Unlike permissions-only configuration, declared additional repositories are a hard requirement: missing credentials, a missing origin, or an inaccessible declared repository fails preflight and run initialization with the repository named.
 
-The higher-precedence list replaces the lower one wholesale — no union and no `...` splice — and `additional_repositories = []` explicitly clears an inherited list. `additional_repositories` and `permissions` resolve independently; if layering leaves repositories declared while permissions were cleared, resolution reports the invalid combination instead of dropping either field.
+The higher-precedence list replaces the lower one wholesale. There is no union and no `...` splice, and `additional_repositories = []` explicitly clears an inherited list. `additional_repositories` and `permissions` resolve independently; if layering leaves repositories declared while permissions were cleared, resolution reports the invalid combination instead of dropping either field.
 
 See [Additional repositories](/integrations/github#additional-repositories) for what works inside stages (`gh`, GitHub API, plain Git over HTTPS and the common SSH spellings) and for the security boundary.
 
@@ -486,7 +486,7 @@ commit_timeout = "30s"
 | `skip_git_hooks` | Accepted for compatibility. Fabro-managed run-branch checkpoint commits never run local Git commit hooks (e.g. `pre-commit`, `commit-msg`); the sandbox driver disables repository hooks on every git command it runs. Does not affect Fabro workflow `[[run.hooks]]`. |
 | `commit_timeout` | Accepted for compatibility. The per-node run-branch checkpoint commit runs under the sandbox driver's git command budget; no repository hook can prolong it. |
 
-`exclude_globs` replaces across layers — the higher-precedence layer wins wholesale. `skip_git_hooks` and `commit_timeout` use normal override semantics: the highest layer that sets the field wins.
+`exclude_globs` replaces across layers: the higher-precedence layer wins wholesale. `skip_git_hooks` and `commit_timeout` use normal override semantics: the highest layer that sets the field wins.
 
 ### `[run.inputs]`
 
@@ -515,7 +515,7 @@ Inputs cannot parameterize workflow structure, file references such as node IDs,
 
 If a workflow template references an undefined input like `{{ inputs.langauge }}`, `fabro validate` reports a warning. Run-style commands promote that diagnostic to an error before creating or starting a run.
 
-TOML `[run.inputs]` tables replace wholesale across layers. Unlike labels, TOML input tables do not merge by key — the highest-precedence config layer that sets `inputs` wins its entire map.
+TOML `[run.inputs]` tables replace wholesale across layers. Unlike labels, TOML input tables do not merge by key. The highest-precedence config layer that sets `inputs` wins its entire map.
 
 CLI input flags are sparse overrides on top of the resolved config inputs:
 
@@ -538,7 +538,7 @@ include = ["test-results/**", "playwright-report/**", "**/*.trace.zip"]
 |---|---|
 | `include` | Workspace-relative glob patterns for regular files to collect as assets after each stage. |
 
-Artifact collection is opt-in — when no `[run.artifacts]` section is present, no file scanning occurs.
+Artifact collection is opt-in: when no `[run.artifacts]` section is present, no file scanning occurs.
 
 Artifact globs use `/` as the separator and have the same semantics in every sandbox:
 
@@ -592,13 +592,13 @@ id = "sentry"
 
 | Field | Description | Default |
 |---|---|---|
-| `id` | Server-managed MCP definition to use. Cannot be combined with inline transport fields. | — |
+| `id` | Server-managed MCP definition to use. Cannot be combined with inline transport fields. | None |
 | `enabled` | Set `false` to leave this inline server or catalog reference disabled. | `true` |
-| `type` | Transport type: `"stdio"`, `"http"`, or `"sandbox"`. | — |
-| `script` | (stdio, sandbox) Shell-evaluated startup command, mutually exclusive with `command`. | — |
-| `command` | (stdio, sandbox) Argv array: executable + arguments. | — |
-| `port` | (sandbox) Port the server listens on inside the sandbox. | — |
-| `url` | (http) The MCP server endpoint URL. | — |
+| `type` | Transport type: `"stdio"`, `"http"`, or `"sandbox"`. | None |
+| `script` | (stdio, sandbox) Shell-evaluated startup command, mutually exclusive with `command`. | None |
+| `command` | (stdio, sandbox) Argv array: executable + arguments. | None |
+| `port` | (sandbox) Port the server listens on inside the sandbox. | None |
+| `url` | (http) The MCP server endpoint URL. | None |
 | `env` | (stdio, sandbox) Additional environment variables. | `{}` |
 | `headers` | (http) Optional HTTP headers for authentication. | `{}` |
 | `startup_timeout` | Max duration for server startup + MCP handshake (e.g. `"10s"`, `"1m"`). | `"10s"` |
@@ -721,9 +721,9 @@ active configuration independently; the warning does not claim otherwise.
 
 Fabro validates the run config when it loads:
 
-- **`_version` check** — Only `_version = 1` (or missing, which defaults to `1`) is accepted. The legacy top-level `version` key is rejected with a rename hint.
-- **Unknown keys** — Any top-level key not in `[project]`, `[workflow]`, `[run]`, `[cli]`, `[server]`, or `_version` is rejected with a targeted rename hint pointing at the v2 replacement path.
-- **Variable check** — Undefined workflow or prompt template variables produce diagnostics. `fabro validate` reports them as warnings; run-style commands treat them as errors before creating or starting a run.
+- _version check: only `_version = 1` (or missing, which defaults to `1`) is accepted. The legacy top-level `version` key is rejected with a rename hint.
+- Unknown keys: any top-level key not in `_version`, `[project]`, `[workflow]`, `[environments]`, `[run]`, `[cli]`, `[server]`, or `[llm]` is rejected with a targeted rename hint pointing at the v2 replacement path.
+- Variable check: undefined workflow or prompt template variables produce diagnostics. `fabro validate` reports them as warnings; run-style commands treat them as errors before creating or starting a run.
 
 The CLI also continues to parse and validate its active machine settings and a
 discovered source-project config before creation. Malformed or unreadable files

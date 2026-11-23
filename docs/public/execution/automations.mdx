@@ -3,7 +3,7 @@ title: "Automations"
 description: "Named, repeatable run configurations with API and schedule triggers"
 ---
 
-An **automation** is a saved run configuration — a Git run target, a workflow, a server-managed environment, and the triggers that may start it. By default, Fabro loads the workflow from the run-target checkout. An automation can instead name an independent GitHub repository and branch, tag, or exact commit for its workflow files. When a trigger fires, Fabro packages the selected workflow as an immutable workflow version and admits it through the same `RunIntent` pipeline as `POST /api/v1/runs`. Automation runs therefore get the same lifecycle, events, and observability as manually created runs. Each run records the automation and trigger that created it.
+An **automation** is a saved run configuration: a Git run target, a workflow, a server-managed environment, and the triggers that may start it. By default, Fabro loads the workflow from the run-target checkout. An automation can instead name an independent GitHub repository and branch, tag, or exact commit for its workflow files. When a trigger fires, Fabro packages the selected workflow as an immutable workflow version and admits it through the same `RunIntent` pipeline as `POST /api/v1/runs`. Automation runs therefore get the same lifecycle, events, and observability as manually created runs. Each run records the automation and trigger that created it.
 
 ## Defining automations
 
@@ -123,7 +123,7 @@ When a trigger fires, Fabro resolves the run target and selected workflow checko
 
 ## Triggers
 
-Each trigger has an `id` and its own `enabled` flag. Trigger-level `enabled` is the sole activation control — there is no automation-level master switch.
+Each trigger has an `id` and its own `enabled` flag. Trigger-level `enabled` is the sole activation control. There is no automation-level master switch.
 
 ### API triggers
 
@@ -141,13 +141,13 @@ enabled = true
 expression = "0 9 * * 1-5"
 ```
 
-The server fires each enabled schedule trigger at its next occurrence and creates and starts a run. Creating, editing, or deleting an automation takes effect immediately — no restart needed. If a fire fails (for example, because its environment is unavailable or workflow packaging fails), Fabro stores the failure on the automation as `last_error`, logs it, and waits for the next occurrence rather than retrying. The error is cleared after a later scheduled run is queued successfully.
+The server fires each enabled schedule trigger at its next occurrence and creates and starts a run. Creating, editing, or deleting an automation takes effect immediately, with no restart needed. If a fire fails (for example, because its environment is unavailable or workflow packaging fails), Fabro stores the failure on the automation as `last_error`, logs it, and waits for the next occurrence rather than retrying. The error is cleared after a later scheduled run is queued successfully.
 
 ## Web UI
 
 The `/automations` area lists automations with create, edit, delete, and Run actions. The create and edit forms require a Docker or Daytona environment. Migrated automations without an environment are shown as incomplete and cannot run until edited. Saves are revision-checked, so concurrent edits fail loudly instead of silently overwriting each other. The detail page shows the automation's configuration, its most recent schedule error, and its run history with status, time, and repo filters.
 
-To bootstrap an automation from work you have already run, open a run's actions menu and choose **Create automation from run** — the new-automation form is pre-filled from that run's target repository and workflow. Its workflow source defaults to the target checkout because normal run summaries do not retain the automation's mutable source coordinate. You can enable a remote workflow before saving. Runs that were created by an automation show **View automation** instead.
+To bootstrap an automation from work you have already run, open a run's actions menu and choose **Create automation from run**. The new-automation form is pre-filled from that run's target repository and workflow. Its workflow source defaults to the target checkout because normal run summaries do not retain the automation's mutable source coordinate. You can enable a remote workflow before saving. Runs that were created by an automation show **View automation** instead.
 
 ## API
 
