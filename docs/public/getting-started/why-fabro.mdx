@@ -9,11 +9,11 @@ Fabro is the open source dark software factory for small teams of expert enginee
 
 AI coding agents have transformed software engineering productivity, but the surrounding toolchain hasn't kept up:
 
-- **Developers work for the agents.** The prompt-wait-review loop idles engineers while agents run, then demands constant babysitting to course-correct.
-- **Unpredictable agents force oversight.** Non-deterministic guardrails create an explosion of failure modes. Engineers compensate by watching every step.
-- **Verification is overwhelmed.** Agent throughput exceeds human review capacity. CI pipelines designed for pass/fail signals can't keep pace with the volume or nuance of AI-generated code.
-- **Token costs are primed to explode.** ROI per token diverges wildly across tasks, models, and harnesses. Every unnecessary frontier token is one that can't be spent where it matters.
-- **The continuous improvement loop broke.** Data is lost at every sub-process boundary. Organizations can't train LLMs the way they train people, and memory files make no guarantees.
+- Developers work for the agents. The prompt-wait-review loop idles engineers while agents run, then demands constant babysitting to course-correct.
+- Unpredictable agents force oversight. Non-deterministic guardrails create an explosion of failure modes. Engineers compensate by watching every step.
+- Verification is overwhelmed. Agent throughput exceeds human review capacity. CI pipelines designed for pass/fail signals can't keep pace with the volume or nuance of AI-generated code.
+- Token costs are primed to explode. ROI per token diverges wildly across tasks, models, and harnesses. Every unnecessary frontier token is one that can't be spent where it matters.
+- The continuous improvement loop broke. Data is lost at every sub-process boundary. Organizations can't train LLMs the way they train people, and memory files make no guarantees.
 
 <img src="/images/run-detail.png" alt="Fabro run detail view showing verifications for a pipeline event types change, including Traceability, Readability, Reliability, Code Coverage, and more" />
 
@@ -23,7 +23,7 @@ Fabro gives you a deterministic harness around non-deterministic AI. You define 
 
 <Columns cols={2}>
   <Card title="Version-controlled workflows" icon="diagram-project">
-    Define workflows as code in Graphviz. Nodes are agents, shell commands, or human input gates. Fan out, loop, branch, and resume — all traceable and repeatable.
+    Define workflows as code in Graphviz. Nodes are agents, shell commands, or human input gates. Fan out, loop, branch, and resume, all traceable and repeatable.
   </Card>
   <Card title="Multi-model orchestration" icon="microchip">
     Route tasks to the right model using CSS-like stylesheets. Cross-critique with fresh eyes, delegate simple tasks to fast models, and fail over automatically when providers go down.

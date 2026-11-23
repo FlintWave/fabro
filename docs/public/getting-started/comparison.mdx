@@ -3,53 +3,53 @@ title: Comparison
 description: How Fabro compares to AI coding agents, software factories, and orchestration platforms.
 ---
 
-Fabro is a [dark software factory](/getting-started/dark-factory). It is not an IDE plugin. It is not a REPL, command line or otherwise. It is not a web application where you drag-and-drop workflows or update technical documents (we have Git for those).
+Fabro is a [dark software factory](/getting-started/dark-factory). It is not an IDE plugin, REPL (command line or otherwise), or web application for dragging and dropping workflows or updating technical documents (we have Git for those).
 
-Almost every other tool in AI coding starts from the same place: a developer at a keyboard, typing prompts, reviewing responses and outputs. Fabro starts from a different premise — that the highest-leverage work for expert engineers is defining **what** gets built and **how quality is verified**, not supervising each line of code as it's written.
+Almost every other tool in AI coding starts from the same place: a developer at a keyboard, typing prompts, reviewing responses and outputs. Fabro starts from a different premise: the highest-impact work for expert engineers is defining what gets built and how quality is verified, not supervising each line of code as it's written.
 
 This means Fabro intentionally does not include:
 
-- **An IDE integration** — no VS Code extension, no editor plugins
-- **A REPL CLI** — no interactive prompt-response loop
-- **Autocomplete** — no inline code suggestions
+- An IDE integration: no VS Code extension, no editor plugins.
+- A REPL CLI: no interactive prompt-response loop.
+- Autocomplete: no inline code suggestions.
 
-Instead, Fabro provides workflow graphs, verification gates, multi-model orchestration, and observability — the infrastructure a small team needs to run coding agents with minimal human interaction.
+Instead, Fabro provides workflow graphs, verification gates, multi-model orchestration, and observability, the infrastructure a small team needs to run coding agents with minimal human interaction.
 
 ## Notable Comparisons
 
 ### Automated Coding Workflows
 
-These are the closest alternatives to Fabro — platforms that structure and automate multi-step coding processes rather than offering a single interactive agent session. They are proprietary products which offer a more "light" software factory approach where humans are still watching and driving.
+These are the closest alternatives to Fabro: platforms that structure and automate multi-step coding processes rather than offering a single interactive agent session. They are proprietary products which offer a more "light" software factory approach where humans are still watching and driving.
 
-- **Factory AI (Droids)** — Enterprise coding automation platform
-- **Ona (Gitpod)** — Agentic coding platform with cloud dev environments
-- **Devin** — Autonomous coding agent by Cognition
+- Factory AI (Droids): Enterprise coding automation platform.
+- Ona (Gitpod): Agentic coding platform with cloud dev environments.
+- Devin: Autonomous coding agent by Cognition.
 
 ### AI Coding REPLs
 
-AI coding REPLs like Claude Code, Codex CLI, and Cursor are interactive, prompt-driven agents designed for single-session tasks. They are powerful pair-programming tools but operate at a different level than Fabro — they lack declarative workflow definition, multi-stage orchestration, and Git-native checkpointing.
+AI coding REPLs like Claude Code, Codex CLI, and Cursor are interactive, prompt-driven agents designed for single-session tasks. They are powerful pair-programming tools but operate at a different level than Fabro. They lack declarative workflow definition, multi-stage orchestration, and Git-native checkpointing.
 
-REPLs and Fabro pair nicely. REPLs are ideal for exploring ideas interactively — prototyping an approach, testing assumptions, and iterating in real time. When you're ready to move from exploration to implementation, you can hand the work off to a Fabro workflow for the build out.
+REPLs and Fabro pair nicely. REPLs are ideal for exploring ideas interactively: prototyping an approach, testing assumptions, and iterating in real time. When you're ready to move from exploration to implementation, you can hand the work off to a Fabro workflow for the build out.
 
 ## Other Comparisons
 
 **8090 Software Factory**
 
-8090.ai is an AI SDLC orchestration platform that structures upstream context — requirements, architecture, and planning — then delegates implementation to external coding agents via MCP. Because 8090 stops before code generation and does not perform coding activities itself, it operates in a different stage than Fabro and is not compared in the sections below.
+8090.ai is an AI SDLC orchestration platform that structures upstream context (requirements, architecture, and planning), then delegates implementation to external coding agents via MCP. Because 8090 stops before code generation and does not perform coding activities itself, it operates in a different stage than Fabro and is not compared in the sections below.
 
 **OpenAI Symphony**
 
-[Symphony](https://github.com/openai/symphony) is a new multi-agent orchestration framework from OpenAI that dispatches Codex sessions from a Linear issue board. It is currently an engineering preview with a narrow, fixed workflow (poll → dispatch → resolve → land). Because it is early-stage and with a limited implementation, it is not compared in the sections below.
+[Symphony](https://github.com/openai/symphony) is a new multi-agent orchestration framework from OpenAI that dispatches Codex sessions from a Linear issue board. It is currently an engineering preview with a narrow, fixed workflow (poll → dispatch → resolve → land). Because it is early-stage with a limited implementation, it is not compared in the sections below.
 
 ## Comparison Dimensions
 
 <Note>
-We strive to keep this information accurate, but the landscape changes rapidly. If you spot an inaccuracy, please [let us know](mailto:hello@fabro.sh).
+We strive to keep this information accurate, but things change rapidly. If you spot an inaccuracy, please [let us know](mailto:hello@fabro.sh).
 </Note>
 
 ### Licensing
 
-Open source vs. proprietary — trust, auditability, extensibility.
+Open source vs. proprietary: trust, auditability, extensibility.
 
 | Tool | License |
 |---|---|
@@ -81,7 +81,7 @@ Access to models of various intelligence and costs across providers with per-ste
 | **Factory AI** | Multi-provider with ensembles for Missions. |
 | **Devin** | Proprietary, black box selection. |
 | **Ona** | Multi-provider. One user selection per task. |
-| **AI Coding REPLs** | Locked to REPL provider's ecosystem. |
+| **AI Coding REPLs** | Locked to the REPL provider. |
 
 ### Human-in-the-Loop
 
