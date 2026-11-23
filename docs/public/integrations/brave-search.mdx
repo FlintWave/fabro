@@ -49,8 +49,8 @@ See the [`web_search` tool reference](/agents/tools#web_search) for parameters a
 
 `web_search` is classified as a `shell` category tool, requiring the `full` [permission level](/agents/permissions) for auto-approval. At lower permission levels:
 
-- **Interactive mode** — the user is prompted to approve each call
-- **Non-interactive mode** (`--auto-approve`) — calls are denied
+- **Interactive mode**: the user is prompted to approve each call
+- **Non-interactive mode** (`--auto-approve`): calls are denied
 
 ## Example workflow
 
@@ -77,17 +77,17 @@ digraph Research {
 
 ## Troubleshooting
 
-**"BRAVE_SEARCH_API_KEY is not configured"** — Add the key with `fabro secret set BRAVE_SEARCH_API_KEY <key>`. Run `fabro doctor` to verify.
+**Web search disabled (no key configured)**: When `BRAVE_SEARCH_API_KEY` is absent (and no `VENICE_API_KEY` is present), `fabro doctor` reports web search as a warning and the `web_search` tool is omitted from the agent's tool set and system prompt. Add the key with `fabro secret set BRAVE_SEARCH_API_KEY <key>`, then run `fabro doctor` to verify.
 
-**"Brave Search API returned status 401"** — The API key is invalid or expired. Generate a new key from the [Brave Search API dashboard](https://brave.com/search/api/).
+**"Brave Search API returned status 401"**: The API key is invalid or expired. Generate a new key from the [Brave Search API dashboard](https://brave.com/search/api/).
 
-**"Brave Search API returned status 429"** — Rate limit exceeded. The Brave Search free tier has usage limits. Upgrade your plan or reduce the frequency of `web_search` calls.
+**"Brave Search API returned status 429"**: Rate limit exceeded. The Brave Search free tier has usage limits. Upgrade your plan or reduce the frequency of `web_search` calls.
 
 ## Further reading
 
 <Columns cols={2}>
   <Card title="Tools" icon="wrench" href="/agents/tools#web_search">
-    Full `web_search` tool reference — parameters, output format, and error handling.
+    Full `web_search` tool reference: parameters, output format, and error handling.
   </Card>
   <Card title="Permissions" icon="lock" href="/agents/permissions">
     How tool permissions control web search access.

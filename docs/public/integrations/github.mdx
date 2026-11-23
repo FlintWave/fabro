@@ -5,8 +5,8 @@ description: "Integrate Fabro with GitHub for repository access and OAuth login"
 
 Fabro supports two GitHub integration strategies:
 
-- `token` — the default for local and individual use. Fabro captures `gh auth token` during `fabro install`, stores it as `GITHUB_TOKEN`, and uses that token directly for repo access, pull requests, and sandbox `GITHUB_TOKEN` injection.
-- `app` — the team-oriented option. Fabro registers a [GitHub App](https://docs.github.com/en/apps/overview), uses installation tokens for repo access, enables browser OAuth, and supports webhook delivery when you configure a [webhook strategy](#webhook-delivery-strategies).
+- `token`: the default for local and individual use. Fabro captures `gh auth token` during `fabro install`, stores it as `GITHUB_TOKEN`, and uses that token directly for repo access, pull requests, and sandbox `GITHUB_TOKEN` injection.
+- `app`: the team-oriented option. Fabro registers a [GitHub App](https://docs.github.com/en/apps/overview), uses installation tokens for repo access, enables browser OAuth, and supports webhook delivery when you configure a [webhook strategy](#webhook-delivery-strategies).
 
 `token` changes GitHub integration auth only. It does not provide browser sign-in, so the embedded web UI is disabled when `strategy = "token"`.
 
@@ -172,7 +172,7 @@ To switch GitHub strategies or re-register the app without re-running the full i
 fabro install github
 ```
 
-This walks through just the GitHub setup steps — choosing a strategy, registering an app, or storing a token — and restarts the server when done. Stale settings and secrets from the previous strategy are cleaned up automatically.
+This walks through just the GitHub setup steps (choosing a strategy, registering an app, or storing a token) and restarts the server when done. Stale settings and secrets from the previous strategy are cleaned up automatically.
 
 ## `token` mode
 
@@ -276,13 +276,13 @@ additional_repositories = ["fabro-sh/keystone"]
 permissions = { contents = "read" }
 ```
 
-The run origin stays implicit — never list it. Each entry is a full `owner/repository` slug (no scheme, host, ref, or extra path component). Fabro mints **one** installation token scoped to the origin plus every declared repository, with the one shared `permissions` map applying to all of them.
+The run origin stays implicit. Never list it. Each entry is a full `owner/repository` slug (no scheme, host, ref, or extra path component). Fabro mints **one** installation token scoped to the origin plus every declared repository, with the one shared `permissions` map applying to all of them.
 
 What works against every declared repository, within the granted permissions:
 
-- **`gh` CLI and raw GitHub API calls** through `GITHUB_TOKEN`.
-- **Plain Git over HTTPS** (`git clone https://github.com/owner/repo`), through a credential helper that reads a private, renewable store outside the workspace.
-- **The common SSH spellings** `git@github.com:owner/repo[.git]` and `ssh://git@github.com/owner/repo[.git]`, through SSH-to-HTTPS rewrites injected into the stage environment.
+- `gh` CLI and raw GitHub API calls: through `GITHUB_TOKEN`.
+- Plain Git over HTTPS (`git clone https://github.com/owner/repo`): through a credential helper that reads a private, renewable store outside the workspace.
+- The common SSH spellings `git@github.com:owner/repo[.git]` and `ssh://git@github.com/owner/repo[.git]`: through SSH-to-HTTPS rewrites injected into the stage environment.
 
 Fabro does not clone additional repositories for you; a workflow that needs one on disk adds its own clone step (`git clone https://github.com/owner/repo` or `gh repo clone owner/repo`).
 
@@ -296,13 +296,13 @@ Requirements and validation:
 
 Behavior notes:
 
-- **Token strategy (PAT):** the configured PAT is used as-is. The repository list drives validation and preflight probes, but it cannot narrow the PAT's inherent GitHub scope — App mode remains the least-authority option.
-- **`GH_TOKEN` precedence:** `gh` checks `GH_TOKEN` before `GITHUB_TOKEN`. If the resolved run environment defines `GH_TOKEN`, `gh` uses it instead of the managed token; Fabro never sets or removes `GH_TOKEN`, and preflight warns when additional repositories are declared alongside one.
-- **GitHub SSH URLs are rewritten to HTTPS.** The helper supplies credentials only for the origin and declared repository paths, including their `.git` spellings. An undeclared private repository does not receive a credential from this helper.
+- Token strategy (PAT): the configured PAT is used as-is. The repository list drives validation and preflight probes, but it cannot narrow the PAT's inherent GitHub scope. App mode remains the least-authority option.
+- `GH_TOKEN` precedence: `gh` checks `GH_TOKEN` before `GITHUB_TOKEN`. If the resolved run environment defines `GH_TOKEN`, `gh` uses it instead of the managed token; Fabro never sets or removes `GH_TOKEN`, and preflight warns when additional repositories are declared alongside one.
+- GitHub SSH URLs are rewritten to HTTPS. The helper supplies credentials only for the origin and declared repository paths, including their `.git` spellings. An undeclared private repository does not receive a credential from this helper.
 
 #### Security boundary
 
-Workflow authors may name any repository reachable by the server's GitHub App installation; Fabro applies no second server-side repository intersection. The token is scoped server-side to exactly the declared set — a request to an undeclared repository fails at GitHub, and Fabro never mints an unscoped installation-wide token. With `contents = "write"`, **any stage can push to any declared repository**. Declare the smallest repository set and the weakest permissions that work.
+Workflow authors may name any repository reachable by the server's GitHub App installation; Fabro applies no second server-side repository intersection. The token is scoped server-side to exactly the declared set: a request to an undeclared repository fails at GitHub, and Fabro never mints an unscoped installation-wide token. With `contents = "write"`, **any stage can push to any declared repository**. Declare the smallest repository set and the weakest permissions that work.
 
 Installation Access Tokens are short-lived. Fabro reuses cached tokens until they are within ten minutes of expiry. Each process launch resolves its current credentials, and a background task checks the Git credential store every minute while the execution scope is acquired. Command stages, native agent tools, ACP agents, and resumed scopes use the same mechanism. A long-lived ACP agent's later Git operations read the renewed store. The token never appears in the repository's remote URL, Git configuration, or workspace snapshots; the private store is removed when the scope releases. Background refresh failures are logged and retried, and a still-valid cached token remains usable.
 
@@ -350,7 +350,7 @@ GitHub Apps are **private by default**, meaning they can only be installed on re
 2. Scroll to the bottom under **Danger zone**
 3. Click **Make public**
 
-Once the app is public, anyone with the installation link can install it on their repositories. This does not grant the app any additional permissions — repository owners still choose which repositories the app can access during installation.
+Once the app is public, anyone with the installation link can install it on their repositories. This does not grant the app any additional permissions. Repository owners still choose which repositories the app can access during installation.
 
 ### "GitHub App installation is suspended"
 

@@ -1,9 +1,9 @@
 ---
 title: "Modal"
-description: "Run Kimi K3 through Modal's OpenAI-compatible inference endpoints"
+description: "Run models through Modal's OpenAI-compatible inference endpoints"
 ---
 
-[Modal](https://modal.com/) serves Kimi K3 through an OpenAI-compatible Shared API and through dedicated Auto Endpoints. Fabro ships a disabled `modal` provider entry for Kimi K3. Enable it after Modal gives you an endpoint URL.
+[Modal](https://modal.com/) serves inference through an OpenAI-compatible Shared API and through dedicated Auto Endpoints. Fabro ships a disabled `modal` provider entry with no built-in model rows; Modal assigns each workspace its own endpoint hostnames, so the available models come from your endpoint. Enable it after Modal gives you an endpoint URL.
 
 ## Prerequisites
 
@@ -49,7 +49,7 @@ base_url = "https://your-endpoint.modal.run/v1"
 enabled = true
 ```
 
-The endpoint URL is not built into Fabro because Modal assigns it to your Shared API or Auto Endpoint.
+Fabro ships the Shared Endpoint router (`https://inference.us-west.modal.direct/v1`) as the default `base_url`; override it only for a dedicated Auto Endpoint.
 
 ## Configure credentials
 
@@ -72,39 +72,34 @@ Modal does not use a bearer API key for these endpoints. Fabro sends the vault v
 
 ## Included model
 
-| Fabro model slug | Modal API ID | Context | Input / cached input / output | Estimated speed |
-| --- | --- | --- | --- | --- |
-| `kimi-k3` | `moonshotai/Kimi-K3` | 1M tokens | $3.00 / $0.30 / $15.00 per MTok | 460 tok/s |
-
-The catalog marks Kimi K3 as supporting tools, vision, reasoning, and prompt caching. Modal's model ID is case-sensitive.
+There is no built-in Modal model row. Modal's Shared Endpoint listing returns hostnames scoped to the caller's proxy token, so Fabro treats those hostnames as the model IDs (`modal/<endpoint-hostname>`). To use a built-in-style slug instead, add an operator row under `[llm.providers.modal.models.*]` in your own catalog overlay with Modal's exact endpoint model string as `api_model`.
 
 ## Use Kimi K3
 
+Modal's own tooling lists the endpoint hostnames your proxy token can reach (for example `modal endpoint list`, or `GET {base}/models` against the endpoint). Select one as `modal/<endpoint-hostname>`, or the slug from an operator-defined row, when testing or running workflows. `fabro model list --provider modal` shows only operator-defined rows added to your catalog overlay:
+
 ```bash
-fabro model list --provider modal
-fabro model test --provider modal --model kimi-k3
-fabro run workflow.fabro --provider modal --model kimi-k3
+fabro model test --provider modal --model modal/<endpoint-hostname>
+fabro run workflow.fabro --provider modal --model modal/<endpoint-hostname>
 ```
 
 When targeting a non-default remote server, pass the same `--server` value:
 
 ```bash
-fabro model list --server https://your-fabro.example --provider modal
-fabro model test --server https://your-fabro.example --provider modal --model kimi-k3
+fabro model test --server https://your-fabro.example --provider modal --model modal/<endpoint-hostname>
 ```
-
 In workflow stylesheets:
 
 ```dot title="workflow.fabro"
 digraph Example {
     graph [
         model_stylesheet="
-            * { model: modal/kimi-k3; }
+            * { model: modal/<endpoint-hostname>; }
         "
     ]
 
     start [shape=Mdiamond, label="Start"]
-    work  [label="Work", prompt="Use Kimi K3 through Modal."]
+    work  [label="Work", prompt="Use Modal through the selected endpoint."]
     exit  [shape=Msquare, label="Exit"]
 
     start -> work -> exit
@@ -125,21 +120,21 @@ enabled = true
 
 ## Costs
 
-Fabro estimates Shared API costs from Modal's published Kimi K3 prices. Completion and reasoning tokens use the output rate. Modal responses do not include an authoritative charge, so Fabro reports the cost source as `catalog`.
+Fabro has no built-in Modal model prices. Costs for endpoint hostnames are Passthrough: each deployed endpoint is responsible for its own pricing, and Fabro does not ship an estimate for it.
 
-Dedicated Auto Endpoints use Modal compute billing instead of the Shared API token prices. The Fabro estimate does not represent that compute bill.
+Dedicated Auto Endpoints use Modal compute billing instead of Shared API token prices.
 
 ## Troubleshooting
 
-**Modal requests fail with 404** — Add the Modal endpoint URL as `base_url` under `[llm.providers.modal]`. Include `/v1`.
+**Modal requests fail with 404 on a dedicated Auto Endpoint**. Add that endpoint's URL as `base_url` under `[llm.providers.modal]`, including `/v1` and no trailing slash. Shared API users do not need to set `base_url`.
 
-**Modal is not configured** — Set both `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` in the target server vault. One value is not sufficient.
+**Modal is not configured**. Set both `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` in the target server vault. One value is not sufficient.
 
-**401 or 403** — Confirm that the token pair belongs to the correct Modal workspace and environment. If the workspace uses RBAC, allow the token in that environment.
+**401 or 403**. Confirm that the token pair belongs to the correct Modal workspace and environment. If the workspace uses RBAC, allow the token in that environment.
 
-**404** — Confirm that the base URL is the endpoint URL followed by `/v1`, with no trailing slash.
+**404**. Confirm that the base URL is the endpoint URL followed by `/v1`, with no trailing slash.
 
-**Unknown model** — The built-in API ID is exactly `moonshotai/Kimi-K3`. Run `fabro model test --provider modal --model kimi-k3` to test the configured offering.
+**Unknown model**. Confirm the selected endpoint hostname comes from Modal's endpoint listing (or the slug of an operator-defined row), then run `fabro model test --provider modal --model <model>`.
 
 ## Further reading
 

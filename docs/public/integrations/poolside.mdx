@@ -112,7 +112,7 @@ OpenRouter returns authoritative in-band cost telemetry. Its current paid rates 
 
 | Model | Input | Output | Cache read |
 |---|---:|---:|---:|
-| `poolside/laguna-s-2.1` | $0.10 | $0.20 | $0.01 |
+| `poolside/laguna-s-2.1` | $0.09 | $0.18 | $0.009 |
 | `poolside/laguna-xs-2.1` | $0.06 | $0.12 | $0.03 |
 
 The XS rate reflects OpenRouter's current promotional discount and can change. Fabro prefers OpenRouter's authoritative `usage.cost` over catalog estimates.
@@ -121,11 +121,11 @@ Fabro does not include promotional `:free` OpenRouter variants in the built-in c
 
 ## Troubleshooting
 
-**"No API key configured"** — Store `POOLSIDE_API_KEY` on the target server with `fabro provider login --provider poolside`. The server runtime resolves the key from its vault, not from process env.
+**credentials are not configured for provider `poolside`**. Store `POOLSIDE_API_KEY` on the target server with `fabro provider login --provider poolside`. The server runtime resolves the key from its vault, not from process env.
 
-**Unknown model** — Direct Poolside routes use `laguna-s-2.1` and `laguna-xs-2.1`. OpenRouter routes include the `poolside/` prefix.
+**Unknown model**. Direct Poolside routes use `laguna-s-2.1` and `laguna-xs-2.1`. OpenRouter routes include the `poolside/` prefix.
 
-**Reasoning effort rejected** — Laguna's hosted endpoints support thinking off or max, not low/medium/high effort. Omit `reasoning_effort`; use the provider option above only when you need to disable thinking.
+**Reasoning effort rejected**. Laguna's hosted endpoints support thinking off or max, not low/medium/high effort. Omit `reasoning_effort`; use the provider option above only when you need to disable thinking.
 
 ## Further reading
 
