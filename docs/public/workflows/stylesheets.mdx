@@ -3,7 +3,7 @@ title: "Model Stylesheets"
 description: "Assign LLM models to workflow nodes using CSS-like rules"
 ---
 
-Model stylesheets let you assign LLM models, providers, and settings to workflow nodes using a CSS-like syntax. Instead of hardcoding a model on every node, you write a set of rules that target nodes by ID, class, shape, or a universal wildcard — and Fabro applies them by specificity.
+Model stylesheets let you assign LLM models, providers, and settings to workflow nodes using a CSS-like syntax. Instead of hardcoding a model on every node, you write a set of rules that target nodes by ID, class, shape, or a universal wildcard, and Fabro applies them by specificity.
 
 ## Defining a stylesheet
 
@@ -34,9 +34,9 @@ digraph Example {
 
 In this example:
 
-- **spec** gets Haiku (matches `*`)
-- **implement** and **test** get Sonnet with high reasoning (match `.coding`)
-- **review** gets Gemini Pro (matches `#review`)
+- spec gets Haiku (matches `*`)
+- implement and test get Sonnet with high reasoning (match `.coding`)
+- review gets Gemini Pro (matches `#review`)
 
 ## Template stylesheets
 
@@ -82,7 +82,7 @@ Static template includes are supported and resolve relative to the workflow temp
 graph [model_stylesheet="{% include 'styles/models.partial' %}"]
 ```
 
-Include paths must be literal. Dynamic or root-escaping include paths fail validation. `model_stylesheet` does not support the `@file` shorthand.
+Include paths must be literal. Include paths that are not literal, or that escape the root, fail validation. `model_stylesheet` does not support the `@file` shorthand.
 
 Fabro uses this order:
 
@@ -93,7 +93,7 @@ Fabro uses this order:
 5. Resolve model and provider selectors.
 6. Validate the transformed graph.
 
-A `model_stylesheet` on an imported graph is ignored and produces an `imported_model_stylesheet_ignored` warning. Put the stylesheet on the root graph. A root stylesheet can target imported nodes by their generated IDs, classes, or shapes.
+A `model_stylesheet` on an imported graph is ignored and produces an `attractor.imported_model_stylesheet_ignored` warning. Put the stylesheet on the root graph. A root stylesheet can target imported nodes by their generated IDs, classes, or shapes.
 
 If an input or variable is unavailable, `fabro validate` reports `attractor.unbound_input` as a warning and leaves the stylesheet unrendered, so its syntax and model checks wait for the values. Run-style commands refuse the workflow with `unsupported.template.unbound_input` before they create or start a run.
 
@@ -125,10 +125,10 @@ Stylesheets support five properties:
 | Property | Description | Example |
 |---|---|---|
 | `model` | Model ID or alias | `claude-sonnet-4-5`, `opus`, `gemini-pro` |
-| `provider` | Provider name (optional — auto-inferred from the model catalog when omitted) | `anthropic`, `openai`, `gemini` |
+| `provider` | Provider name (optional; auto-inferred from the model catalog when omitted) | `anthropic`, `openai`, `gemini` |
 | `reasoning_effort` | Reasoning effort level | `low`, `medium`, `high` |
 | `speed` | Output speed mode. `fast` enables Anthropic's fast mode for up to 2.5x faster output at higher cost. | `fast` |
-| `backend` | Agent execution backend — `api` (default) runs Fabro's own tool loop, `cli` delegates to a legacy external CLI tool, and `acp` runs an Agent Client Protocol stdio agent in the active sandbox. See [Backends](/core-concepts/agents#backends). | `api`, `cli`, `acp` |
+| `backend` | Agent execution backend: `api` (default) runs Fabro's own tool loop, `cli` delegates to a legacy external CLI tool, and `acp` runs an Agent Client Protocol stdio agent in the active sandbox. See [Backends](/core-concepts/agents#backends). | `api`, `cli`, `acp` |
 
 See [Models](/core-concepts/models) for the full list of model IDs and aliases.
 
@@ -173,7 +173,7 @@ selector { property: value; property: value; }
 - Selectors: `*`, `shape`, `.class`, `#id`
 - Properties and values are separated by `:`
 - Declarations are separated by `;`
-- Whitespace is flexible — newlines and indentation are ignored
+- Whitespace is flexible: newlines and indentation are ignored
 - CSS block comments (`/* ... */`) can appear between tokens and are ignored
 - Comments close at the first `*/` and do not nest; an unterminated comment is a syntax error
 - `//` starts a comment in the surrounding workflow file, but not inside a stylesheet

@@ -3,7 +3,7 @@ title: "Decisions"
 description: "Adding human review and intervention to workflows"
 ---
 
-Not every decision should be made by an LLM. Fabro provides several mechanisms for humans to participate in workflows — approving plans, choosing between options, providing free-form input, and steering agents while they run.
+Not every decision should be made by an LLM. Fabro provides several mechanisms for humans to participate in workflows (approving plans, choosing between options, providing free-form input, and steering agents while they run).
 
 ## Human gates
 
@@ -53,7 +53,7 @@ review -> custom    [freeform=true]
 
 If the user types something that doesn't match any fixed option, their input routes to the freeform edge. The text is available to downstream nodes as `human.gate.text` in the run context.
 
-When a gate has only a freeform edge and no fixed choices, the user goes directly to a text input prompt — skipping the multiple-choice menu entirely. This is useful for conversational loops like REPL workflows where the user provides open-ended instructions each iteration.
+When a gate has only a freeform edge and no fixed choices, the user goes directly to a text input prompt (skipping the multiple-choice menu entirely). This is useful for conversational loops like REPL workflows where the user provides open-ended instructions each iteration.
 
 ### Question types
 
@@ -110,13 +110,13 @@ secret, not a live Quarry document.
 Fabro generates this question text from the target. A `label` on the gate is
 not used while `review_target=true`.
 
-The target object has three required fields:
+The target object has two required fields:
 
 | Field | Meaning |
 |---|---|
 | `label` | The link text. It must contain 1 to 200 characters and no control characters. |
 | `url` | An absolute HTTP or HTTPS URL. It must contain a host, must not contain URL credentials, and must be at most 2048 characters. |
-| `kind` | The resource type. The supported value is `document`. |
+| `kind` | Optional. The resource type; defaults to `document`. The supported value is `document`. |
 
 Fabro validates the target before it starts the interview. A missing or invalid
 target fails the gate deterministically. A gate without `review_target=true`
@@ -164,10 +164,10 @@ Auto-approve selects `Yes` for yes/no gates and the first option for multiple-ch
 
 Human gates are most valuable at high-leverage decision points:
 
-- **Before implementation** — Approve a plan before the agent writes code
-- **After review** — Confirm that a code review's findings are worth fixing
-- **At branch points** — Choose a strategy when multiple approaches are viable
-- **Before external actions** — Approve before deploying, merging, or sending notifications
+- Before implementation. Approve a plan before the agent writes code
+- After review. Confirm that a code review's findings are worth fixing
+- At branch points. Choose a strategy when multiple approaches are viable
+- Before external actions. Approve before deploying, merging, or sending notifications
 
 A workflow can have multiple human gates. Place them where the cost of a wrong decision is high relative to the cost of a brief pause.
 

@@ -3,19 +3,19 @@ title: "Transitions"
 description: "How Fabro decides which node to execute next"
 ---
 
-After each node finishes, Fabro must decide which edge to follow to the next node. This decision is deterministic by default — given the same outcome and context, Fabro always picks the same edge. Nodes can opt into [random selection](#random-selection) for weighted-random tiebreaking instead. Understanding the transition logic helps you design workflows that route reliably.
+After each node finishes, Fabro must decide which edge to follow to the next node. This decision is deterministic by default: given the same outcome and context, Fabro always picks the same edge. Nodes can opt into [random selection](#random-selection) for weighted-random tiebreaking instead. Understanding the transition logic helps you design workflows that route reliably.
 
 ## How transitions work
 
 When a node completes, it produces an **outcome** with a [stage outcome](/execution/outcomes) (`succeeded`, `failed`, `partially_succeeded`, or `skipped`) and optional signals like a preferred label or suggested next node. A node's retry policy runs before routing starts. Fabro then selects the next step in this order:
 
-1. **Direct jump** — An outcome's `jump_to_node` value bypasses edge selection.
-2. **Condition match** — Edges with a `condition` attribute are evaluated first. If one or more conditions match, the edge with the highest `weight` wins (lexical tiebreak on target node ID).
-3. **Preferred label** — If the node's outcome includes a preferred label (for example, from a human gate selection), the edge whose `label` matches is chosen.
-4. **Suggested next** — If the node suggests a specific next node ID, the edge pointing to that node is chosen.
-5. **Failure policy** — For a failed outcome with no explicit route, the effective `on_failure` policy (node-level `on_failure` first, then graph-level) decides what happens next. `exit` skips the unconditional fallback. `succeed` promotes the outcome to `succeeded` and routes it as a success. `route` continues to the unconditional fallback.
-6. **Unconditional fallback** — Edges without conditions are considered last, again using `weight` then lexical tiebreak.
-7. **Retry target** — For a failed outcome with no selected edge, Fabro checks node-level and graph-level `retry_target` and `fallback_retry_target` values.
+1. **Direct jump.** An outcome's `jump_to_node` value bypasses edge selection.
+2. **Condition match.** Edges with a `condition` attribute are evaluated first. If one or more conditions match, the edge with the highest `weight` wins (lexical tiebreak on target node ID).
+3. **Preferred label.** If the node's outcome includes a preferred label (for example, from a human gate selection), the edge whose `label` matches is chosen.
+4. **Suggested next.** If the node suggests a specific next node ID, the edge pointing to that node is chosen.
+5. **Failure policy.** For a failed outcome with no explicit route, the effective `on_failure` policy (node-level `on_failure` first, then graph-level) decides what happens next. `exit` skips the unconditional fallback. `succeed` promotes the outcome to `succeeded` and routes it as a success. `route` continues to the unconditional fallback.
+6. **Unconditional fallback.** Edges without conditions are considered last, again using `weight` then lexical tiebreak.
+7. **Retry target.** For a failed outcome with no selected edge, Fabro checks node-level and graph-level `retry_target` and `fallback_retry_target` values.
 
 If no edge or retry target supplies a next node, the workflow ends. A failed node produces a failed run outcome.
 
@@ -135,7 +135,7 @@ gate -> implement [label="Fix", condition="outcome=failed"]
 | `contains` | `context.message contains error` | Substring match, or array membership |
 | `matches` | `context.version matches ^v\d+` | Regular expression match |
 
-A bare key with no operator is a **truthiness check** — it passes if the value is non-empty, not `"false"`, and not `"0"`:
+A bare key with no operator is a **truthiness check**: it passes if the value is non-empty, not `"false"`, and not `"0"`:
 
 ```dot
 gate -> next [condition="my_flag"]
@@ -177,7 +177,7 @@ Agent and prompt nodes can influence which edge is taken by including a JSON obj
 | `suggested_next_ids` | Ordered list of preferred target node IDs |
 | `context_updates` | Key-value pairs merged into the run context for downstream conditions |
 
-Fabro automatically scans LLM output for these JSON objects — no special configuration is needed. However, you do need to instruct the LLM to emit the JSON in your prompt. For example:
+Fabro automatically scans LLM output for these JSON objects; no special configuration is needed. However, you do need to instruct the LLM to emit the JSON in your prompt. For example:
 
 ```dot
 review [
@@ -194,7 +194,7 @@ review -> fix     [label="Fix"]
 review -> approve [label="Approve"]
 ```
 
-The LLM's natural language response can contain other text — Fabro finds the last JSON object with a recognized routing field and extracts the directives from it.
+The LLM's natural language response can contain other text, and Fabro finds the last JSON object with a recognized routing field and extracts the directives from it.
 
 ## Human gate transitions
 
@@ -208,7 +208,7 @@ approve -> plan      [label="[R] Revise"]
 approve -> skip      [label="[S] Skip"]
 ```
 
-The `[A]`, `[R]`, `[S]` prefixes are keyboard accelerators — Fabro strips them when matching, so the user can type just the letter.
+The `[A]`, `[R]`, `[S]` prefixes are keyboard accelerators, and Fabro strips them when matching, so the user can type just the letter.
 
 ## Unconditional edges
 
@@ -249,7 +249,7 @@ picker -> path_a [weight=3]
 picker -> path_b [weight=1]
 ```
 
-In this example, `path_a` is chosen ~75% of the time and `path_b` ~25%. Edges with weight ≤ 0 are treated as weight 1. The cascade priority (conditions → preferred label → suggested next → unconditional) is unchanged — randomness only affects the pick-one-from-candidates step within each tier.
+In this example, `path_a` is chosen ~75% of the time and `path_b` ~25%. Edges with weight ≤ 0 are treated as weight 1. The cascade priority (conditions → preferred label → suggested next → unconditional) is unchanged: randomness only affects the pick-one-from-candidates step within each tier.
 
 <Note>
 `selection="random"` cannot be combined with conditional edges on the same node. Validation rejects this combination because condition evaluation order would conflict with random selection. Use unconditional edges with weights instead.
