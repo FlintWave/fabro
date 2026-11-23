@@ -20,13 +20,13 @@ Every workflow run emits a sequence of canonical **run event envelopes** that ar
 Event names use lowercase dot notation, for example:
 
 - `run.started`
-- `stage.started`
-- `stage.completed`
-- `agent.tool.started`
-- `agent.tool.completed`
-- `sandbox.ready`
-- `todo.updated`
-- `parallel.branch.completed`
+- `step.started`
+- `step.progress.recorded`
+- `step.finished`
+- `routing.resolved`
+- `route.applied`
+- `branch.completed`
+- `run.stalled`
 
 ### Envelope format
 
@@ -34,18 +34,26 @@ Each serialized event envelope has a stable JSON shape:
 
 ```json
 {
-  "id": "01960d0c-5d16-7d6e-8f61-9fd6f4a532b5",
-  "ts": "2026-03-30T12:00:01.000Z",
   "run_id": "01JQ...",
-  "event": "agent.tool.started",
-  "session_id": "ses_child",
-  "parent_session_id": "ses_parent",
-  "node_id": "implement",
-  "node_label": "Implement",
-  "properties": {
-    "tool_name": "shell",
-    "tool_call_id": "call_1",
-    "arguments": {"command": "cargo test"}
+  "stream_seq": 42,
+  "kind": "petri",
+  "id": "execution 0/7/0",
+  "recorded_at": 1795444788953,
+  "item": {
+    "id": {"log": "execution", "execution": 0, "seq": 7, "index": 0},
+    "origin": "external",
+    "subject": {"node": {"id": 2, "name": "verify"}, "firing": 2, "visit": 1, "attempt": 1},
+    "record": {
+      "seq": 7,
+      "origin": "external",
+      "recorded_at": 1795444788953,
+      "body": {
+        "event": "step.finished",
+        "firing": 2,
+        "attempt": 1,
+        "outcome": {"status": "success", "output": {"outcome": "succeeded"}, "metrics": {"duration_ms": 5}}
+      }
+    }
   }
 }
 ```
@@ -54,39 +62,38 @@ Envelope fields:
 
 | Field | Description |
 |---|---|
-| `id` | Unique event id |
-| `ts` | UTC timestamp |
 | `run_id` | Workflow run id |
-| `event` | Event name |
-| `session_id` | Session that emitted the event, when applicable |
-| `parent_session_id` | Immediate parent session for forwarded child events |
-| `node_id` | Node or branch id, when applicable |
-| `node_label` | Human-facing label for `node_id`, when applicable |
-| `properties` | Event-specific payload |
+| `stream_seq` | Durable per-run delivery sequence; the cursor used to resume |
+| `kind` | `petri` for a Petri run event, `platform` for a stored Fabro platform record |
+| `id` | The item's own identity, for deduplication |
+| `recorded_at` | Milliseconds since the Unix epoch when the item's record was appended |
+| `item` | The Petri `RunEvent` or stored platform record, unchanged |
 
-Only `id`, `ts`, `run_id`, and `event` are always present. Optional fields are omitted when they do not apply.
+The Petri event's name lives inside `item` (see `RunStreamItem::name`), typically at `item.record.body.event` or `item.derived.event`. Session, node, and other event-specific fields, formerly top-level, now live inside that nested `item` payload.
 
-For runtime `for_each` branches, `parallel.branch.started` and
-`parallel.branch.completed` include the zero-based `index` and an optional
-`item_label`. They do not include the raw item. The final prompt is recorded by
-the existing `stage.prompt` event, including the fenced item data, so event
-streams, run dumps, and retained logs are source-bearing data. Apply the same
+For runtime `for_each` branches, branch starts and completions are
+`step.progress.recorded` records whose `ev.custom` payload has the kind
+`attractor.parallel.branch.started` or `attractor.parallel.branch.completed`.
+Those payloads include the zero-based `index` and an optional `item_label`.
+They do not include the raw item. A prompt node's final prompt is recorded the
+same way under `ev.custom` with the kind `attractor.prompt`, carrying the
+rendered prompt text including any fenced item data, so event streams, run
+dumps, and retained logs are source-bearing data. Apply the same
 access controls and retention policy you use for workflow inputs.
 
 ## Reading the event stream
 
-Because event payload lives in `properties`, most shell queries should look there.
+A record's event name sits at `.item.record.body.event`, with the event's fields beside it. View events (records with no stored line of their own, such as `branch.completed` and `run.stalled`) carry their name and fields under `.item.derived`.
 
 ```bash
-# Count tool calls in a run
-fabro events 01JKXYZ... | jq -r 'select(.event == "agent.tool.started") | .properties.tool_name' | wc -l
+# Count tool calls in a run (agent payloads ride in step.progress.recorded records)
+fabro events 01JKXYZ... | jq -r 'select(.item.record.body.ev.custom.kind == "pebble") | .item.record.body.ev.custom.event.event | objects | .ToolCallStarted.tool_name // empty' | wc -l
 
-# Find stage failures
-fabro events 01JKXYZ... | jq 'select(.event == "stage.failed")'
+# Find step failures
+fabro events 01JKXYZ... | jq 'select(.item.record.body.event == "step.finished" and (.item.record.body.outcome.status | type == "object") and (.item.record.body.outcome.status | has("failure")))'
 
 # See which edges were taken
-jq '{from: .properties.from_node, to: .properties.to_node, label: .properties.label}' \
-  <(fabro events 01JKXYZ...) | head
+fabro events 01JKXYZ... | jq 'select(.item.record.body.event == "route.applied" and .item.record.body.kind == "edge") | {from: .item.subject.node.name, to: .item.derived.target.name, back: .item.derived.back}'
 ```
 
 If you need files on disk for offline analysis, `fabro dump` exports `events.jsonl` plus run-state projections.
@@ -97,24 +104,25 @@ Common categories include:
 
 | Category | Example events |
 |---|---|
-| Run lifecycle | `run.started`, `run.completed`, `run.failed`, `run.notice` |
-| Stage lifecycle | `stage.started`, `stage.completed`, `stage.failed`, `stage.retrying` |
-| Agent activity | `agent.message`, `agent.tool.started`, `agent.warning`, `agent.sub.spawned` |
-| Agent todo state | `todo.created`, `todo.updated`, `todo.deleted` |
-| Routing | `edge.selected`, `loop.restart`, `parallel.started` |
-| Git and checkpoints | `checkpoint.completed`, `git.commit`, `git.push` |
-| Setup and sandbox | `sandbox.initializing`, `sandbox.ready`, `setup.started` |
+| Run lifecycle | `run.started`, `execution.started`, `execution.finished`, `run.finished`, `run.paused`, `run.unpaused` |
+| Stage (step) lifecycle | `step.started`, `step.finished`, `visit.started`, `visit.completed` |
+| Step progress | `step.progress.recorded` records carrying log lines, artifacts, and structured step payloads |
+| Agent activity | `step.progress.recorded` with `ev.custom.kind` of `pebble`; stage views name the pebble payloads `agent.message`, `agent.tool.started`, `agent.warning`, `agent.sub.spawned` |
+| Agent todo state | pebble todo payloads inside `step.progress.recorded`; stage views name them `todo.created`, `todo.updated`, `todo.deleted` |
+| Routing | `routing.resolved`, `route.applied` |
+| Git and checkpoints | `checkpoint` (platform record), `run.diff` (platform record) |
+| Platform records | `run.created`, `run.lifecycle`, `run.notice`, `artifact.collected`, plus other `PlatformRecordKind` values |
 
-`agent.message` is the canonical post-response event for agent turns. When context-window data is available, it appears on the message payload as `context_window`; there is no separate context-window snapshot event to consume.
+The canonical post-response payload for an agent turn is pebble's `AssistantMessage` event, forwarded in a `step.progress.recorded` record under `ev.custom`. When context-window data is available, it appears on the message payload as `context_window`; there is no separate context-window snapshot event to consume.
 
 ## Sub-agent visibility
 
-Sub-agent activity now appears as normal agent events with session linkage:
+Sub-agent activity now appears as pebble payloads on the same `step.progress.recorded` records as the parent's agent events, with the pebble envelope carrying the session linkage:
 
-- `session_id` identifies the child session
-- `parent_session_id` identifies its immediate parent
+- `session_id` identifies the session that produced the event
+- `parent_session_id` identifies its immediate parent on a child session's events
 
-Lifecycle events such as `agent.sub.spawned` and `agent.sub.completed` are emitted by the parent session. Tool calls and other child activity are forwarded with their original `session_id`.
+Lifecycle payloads such as `SubAgentSpawned` and `SubAgentCompleted` are published by the parent session, and stage views name them `agent.sub.spawned` and `agent.sub.completed`. Tool calls and other child activity are forwarded with their original `session_id`.
 
 ## Real-time monitoring
 
