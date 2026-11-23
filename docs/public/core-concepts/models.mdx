@@ -3,7 +3,7 @@ title: "Models"
 description: "How Fabro routes tasks to LLM models and providers"
 ---
 
-No single model is best at everything. Fabro lets you assign the right model to each workflow step — cheap, fast models for boilerplate, frontier models for hard reasoning, and a different provider for cross-critique so the reviewer brings fresh eyes. When a provider goes down, Fabro can fail over automatically.
+No single model is best at everything. Fabro lets you assign the right model to each workflow step: cheap, fast models for boilerplate, frontier models for hard reasoning, and a different provider for cross-critique so the reviewer brings fresh eyes. When a provider goes down, Fabro can fail over automatically.
 
 <Frame>
   <img src="/images/ensemble-workflow.svg" alt="Ensemble workflow: fan out to Opus and Gemini Pro, merge, then synthesize" />
@@ -38,6 +38,7 @@ Fabro performs this selection once when creating a run and persists the chosen p
 |---|---|---|---|---|---|
 | `claude-fable-5` | anthropic | `fable`, `claude-fable` | 1M | $10.00 / $50.00 | n/a |
 | `claude-opus-5` | anthropic | `opus`, `claude-opus` | 1M | $5.00 / $25.00 | n/a |
+| `claude-sonnet-5` | anthropic | `sonnet`, `claude-sonnet` | 1M | $2.00 / $10.00 | n/a |
 | `claude-opus-4-8` | anthropic | | 1M | $5.00 / $25.00 | 25 tok/s |
 | `claude-opus-4-7` | anthropic | | 1M | $5.00 / $25.00 | 25 tok/s |
 | `claude-opus-4-6` | anthropic | | 1M | $5.00 / $25.00 | 25 tok/s |
@@ -143,7 +144,7 @@ Bedrock applies the header before AWS signing. External ACP agents manage their 
 
 Provider `metadata.agent.profile` defaults from `adapter` and controls profile-specific behavior such as which tools the agent registers, project-memory filenames, CLI/ACP command selection, and native session routing. Valid values are `anthropic`, `claude-5`, `openai`, `gemini`, `kimi`, `gpt56`, and `gpt6`; model-level values override provider-level values.
 
-Three profiles are selected per model rather than per provider, because they follow the model wherever it is served: `claude-5` for Claude 5 models, `kimi` for Kimi models, and `gpt56` for the GPT-5.6 models (Sol, Terra, Luna); `gpt6` for GPT-6 Astra runs on the same harness as `gpt56`. The `gpt56` profile uses Codex's narrow core surface — `shell_command`, `apply_patch`, and `update_plan`, plus optional credential-backed `web_search` — instead of fabro's dedicated file-read, discovery, and `web_fetch` tools. On OpenAI-compatible routes that cannot carry the freeform `apply_patch` grammar, it substitutes the JSON-schema `edit_file` tool. Session features may add their own question, skill, or subagent tools separately.
+Three profiles are selected per model rather than per provider, because they follow the model wherever it is served: `claude-5` for Claude 5 models, `kimi` for Kimi models, and `gpt56` for the GPT-5.6 models (Sol, Terra, Luna); `gpt6` for GPT-6 Astra runs on the same harness as `gpt56`. The `gpt56` profile uses Codex's narrow core surface (`shell_command`, `apply_patch`, and `update_plan`, plus optional credential-backed `web_search`) instead of fabro's dedicated file-read, discovery, and `web_fetch` tools. On OpenAI-compatible routes that cannot carry the freeform `apply_patch` grammar, it substitutes the JSON-schema `edit_file` tool. Session features may add their own question, skill, or subagent tools separately.
 
 Costs come from the lithos `pricing` table on each model row. Each token bucket (input, output, reasoning, cache read, cache write) prices at its own rate, with optional long-context and speed tiers. Providers that return an authoritative charge, such as OpenRouter, override the catalog estimate; the billing record says which source it came from.
 
@@ -181,7 +182,7 @@ Endpoint settings are separate from credentials. For example, `OPENAI_BASE_URL` 
 
 ### Venice
 
-Fabro ships a built-in [Venice](/integrations/venice) provider with a curated catalog of Venice-hosted Kimi, Grok, GLM, DeepSeek, and Qwen models. Store its API key with `fabro provider login --provider venice`. Pin `provider = "venice"` when a shared model slug must use Venice instead of a higher-priority direct provider.
+Fabro ships a built-in [Venice](/integrations/venice) provider with a catalog of Venice-hosted Kimi, Grok, GLM, DeepSeek, and Qwen models. Store its API key with `fabro provider login --provider venice`. Pin `provider = "venice"` when a shared model slug must use Venice instead of a higher-priority direct provider.
 
 ### Poolside
 
@@ -189,11 +190,10 @@ Fabro ships a built-in [Poolside](/integrations/poolside) provider for Laguna S 
 
 ### OpenRouter
 
-Fabro ships an [OpenRouter](/integrations/openrouter) provider definition with a curated model catalog, disabled by default. Enable it in settings and store an API key with `fabro provider login --provider openrouter`:
+Fabro ships a built-in [OpenRouter](/integrations/openrouter) provider with a model catalog. Store an API key with `fabro provider login --provider openrouter`:
 
 ```toml title="settings.toml"
 [llm.providers.openrouter]
-enabled = true
 ```
 
 ### Modal
@@ -215,7 +215,7 @@ fabro secret set MODAL_TOKEN_SECRET ws-...
 
 ### Amazon Bedrock
 
-Fabro ships an [Amazon Bedrock](/integrations/bedrock) provider definition with a curated multi-vendor catalog over Bedrock's Converse API, disabled by default. Enable it and authenticate with a Bedrock API key or AWS SigV4 credentials:
+Fabro ships an [Amazon Bedrock](/integrations/bedrock) provider definition with a multi-vendor catalog over Bedrock's Converse API, disabled by default. Enable it and authenticate with a Bedrock API key or AWS SigV4 credentials:
 
 ```toml title="settings.toml"
 [llm.providers.bedrock]
@@ -232,7 +232,7 @@ Fabro ships an Ollama provider definition that is disabled by default. Enable it
 enabled = true
 ```
 
-Enabling the provider alone does not expose any models — until #267 adds auto-discovery, add explicit `[llm.providers.ollama.models."<model-id>"]` blocks for each Ollama model you have pulled locally. Ollama's OpenAI-compatible endpoint accepts any bearer token, so local users can set `OLLAMA_API_KEY=ollama`.
+Enabling the provider alone does not expose any models. Until #267 adds auto-discovery, add explicit `[llm.providers.ollama.models."<model-id>"]` blocks for each Ollama model you have pulled locally. The provider uses `auth = { type = "none" }`, so it needs no API key.
 
 ## Default models
 
@@ -318,7 +318,7 @@ The `[run.model.fallbacks]` table is optional. Each key names the originally req
 Fabro selects one chain from the original request. It does not switch to the chain configured for a fallback target. When the requested reasoning level is unavailable on a fallback target, Fabro uses the nearest supported level. Equal-distance choices round up.
 
 <Note>
-The precedence order is: node-level stylesheet > run config TOML > CLI flags > server defaults. More specific settings always win.
+The precedence order is: node-level stylesheet > CLI flags > run config TOML > server defaults. More specific settings always win.
 </Note>
 
 ## CLI commands

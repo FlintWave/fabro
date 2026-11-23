@@ -3,7 +3,7 @@ title: "Self-host with Docker"
 description: "Run the Fabro server as a Docker container with docker compose, ECS, or any cloud container service"
 ---
 
-The supported deployment artifact is the official Fabro image at `ghcr.io/fabro-sh/fabro`. Everything else — `docker compose`, ECS, Cloud Run, Kubernetes, Railway — is just running this image somewhere with the right requirements.
+The supported deployment artifact is the official Fabro image at `ghcr.io/fabro-sh/fabro`. Everything else (`docker compose`, ECS, Cloud Run, Kubernetes, Railway) is just running this image somewhere with the right requirements.
 
 ## Requirements
 
@@ -101,7 +101,7 @@ Generate one with `openssl rand -hex 32`.
 | Variable | Purpose |
 |---|---|
 | `SESSION_SECRET` | Session encryption secret |
-| `FABRO_DEV_TOKEN` | Optional — pre-set the dev token instead of reading the one written to `/storage` on first boot |
+| `FABRO_DEV_TOKEN` | Optional: pre-set the dev token instead of reading the one written to `/storage` on first boot |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Optional static S3 object-store credentials |
 
 Do not put optional integration secrets in `.env` for server runtime. Configure LLM provider keys, Slack, Daytona, Brave Search, Venice Search, `GITHUB_TOKEN`, and GitHub App secrets in the vault with `fabro secret set`, `fabro provider login`, or `fabro install`.
@@ -119,9 +119,9 @@ See [Server Configuration](/administration/server-configuration) for the full se
 
 The same image works on any container orchestrator that supports the requirements above. Common patterns:
 
-- **AWS ECS / Fargate** — Task definition referencing `ghcr.io/fabro-sh/fabro:nightly`, EFS volume mounted at `/storage`, port `32276` published, environment variables for bootstrap values, and vault-backed optional integration secrets.
-- **Google Cloud Run** — Cloud Run with a backed volume mount at `/storage`. Pin minimum instances to 1; scale-to-zero interrupts running workflows.
-- **Kubernetes** — One-replica `StatefulSet` (not Deployment) with a `PersistentVolumeClaim` mounted at `/storage`. Expose via Service + Ingress.
+- AWS ECS / Fargate. Task definition referencing `ghcr.io/fabro-sh/fabro:nightly`, EFS volume mounted at `/storage`, port `32276` published, environment variables for bootstrap values, and vault-backed optional integration secrets.
+- Google Cloud Run. Cloud Run with a backed volume mount at `/storage`. Pin minimum instances to 1; scale-to-zero interrupts running workflows.
+- Kubernetes. One-replica `StatefulSet` (not Deployment) with a `PersistentVolumeClaim` mounted at `/storage`. Expose via Service + Ingress.
 
 In all cases: single replica, persistent `/storage`, expose `$PORT`, and configure optional integration secrets in the vault.
 
@@ -151,9 +151,9 @@ See [Server Operations](/reference/server-operations#pointing-the-cli-at-a-serve
 
 ## Caveats
 
-- **Volume is load-bearing.** Without a persistent volume at `/storage`, redeploys silently wipe all state — including the dev token and JWT signing keys.
-- **Single replica.** The server expects exclusive ownership of `/storage`. Don't scale to multiple replicas.
-- **Architecture.** The `:nightly` tag is multi-arch. The amd64 variant is the most heavily tested.
+- Volume is load-bearing. Without a persistent volume at `/storage`, redeploys silently wipe all state, including the dev token and JWT signing keys.
+- Single replica. The server expects exclusive ownership of `/storage`. Don't scale to multiple replicas.
+- Architecture. The `:nightly` tag is multi-arch. The amd64 variant is the most heavily tested.
 
 ## Next steps
 
@@ -162,7 +162,7 @@ See [Server Operations](/reference/server-operations#pointing-the-cli-at-a-serve
     Install wizard, web UI, authentication, demo mode, and pointing the CLI at the server.
   </Card>
   <Card title="Server Configuration" icon="gear" href="/administration/server-configuration">
-    Full settings.toml reference — auth, reverse-proxy TLS, run defaults, and more.
+    Full settings.toml reference: auth, reverse-proxy TLS, run defaults, and more.
   </Card>
   <Card title="Deploy to Railway" icon="train" href="/administration/deploy-railway">
     One-click managed shortcut for the same Docker image.

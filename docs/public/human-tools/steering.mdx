@@ -3,7 +3,7 @@ title: "Steering"
 description: "Guide running agents with real-time course corrections"
 ---
 
-Steering lets you send guidance to an agent while it's working — without waiting for a human gate or stopping the run. If you see the agent heading down the wrong path, you can nudge it back on track mid-stage.
+Steering lets you send guidance to an agent while it's working, without waiting for a human gate or stopping the run. If you see the agent heading down the wrong path, you can nudge it back on track mid-stage.
 
 ## How steering works
 
@@ -16,7 +16,7 @@ The delivery flow:
 3. Before the next LLM call, Fabro drains the queue and injects each message as a `Steering` turn in the conversation history
 4. The LLM sees the guidance alongside its existing context and adjusts accordingly
 
-Steering is **asynchronous** — the agent picks up the message at its next natural pause point.
+Steering is **asynchronous**: the agent picks up the message at its next natural pause point.
 
 When you send steering with `interrupt=true`, Fabro first cancels the active API-mode agent round, then queues the steering text in the same worker-control operation. The agent resumes with that steering text as the next user turn. A standalone interrupt through the API cancels the active round without text and keeps the session waiting until a later steer arrives.
 
@@ -24,8 +24,8 @@ When you send steering with `interrupt=true`, Fabro first cancels the active API
 
 Steering messages are drained from the queue at two points during the agent loop:
 
-1. **Before the first LLM call** — any messages queued before the agent starts its first turn
-2. **After each interrupted or completed round** — before the next LLM call
+1. **Before the first LLM call**: any messages queued before the agent starts its first turn
+2. **After each interrupted or completed round**: before the next LLM call
 
 This means there is a natural latency between sending a plain steering message and the agent seeing it. If the agent is in the middle of a long-running shell command, the message waits until that command finishes and the next LLM turn begins. Use interrupting steering when the current round should stop before the message is delivered.
 
@@ -38,8 +38,8 @@ Steering and [human gates](/workflows/human-in-the-loop) serve different purpose
 | | Steering | Human gates |
 |---|---|---|
 | **When** | Any time during an agent stage | At a defined point in the workflow graph |
-| **Blocks execution** | No — agent continues working | Yes — workflow pauses until a choice is made |
-| **Defined in the graph** | No — sent ad hoc via the API | Yes — `hexagon` nodes with edge options |
+| **Blocks execution** | No, agent continues working | Yes, workflow pauses until a choice is made |
+| **Defined in the graph** | No, sent ad hoc via the API | Yes, `hexagon` nodes with edge options |
 | **Use case** | Course corrections, hints, focus changes | Approval decisions, strategy selection, go/no-go |
 
 Use human gates for structured decisions that are part of the workflow design. Use steering for reactive guidance when you're watching a run and want to intervene.

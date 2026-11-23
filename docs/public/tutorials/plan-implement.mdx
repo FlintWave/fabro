@@ -3,7 +3,7 @@ title: "Plan & Implement"
 description: "Human gates, revision loops, and prompt file references"
 ---
 
-This tutorial builds a plan-approve-implement workflow where a human reviews the plan before the agent writes code. If the plan isn't right, the human sends it back for revision — creating a loop.
+This tutorial builds a plan-approve-implement workflow where a human reviews the plan before the agent writes code. If the plan isn't right, the human sends it back for revision, which creates a loop.
 
 ## The workflow
 
@@ -37,7 +37,7 @@ fabro run docs/internal/demo/10-plan-implement.fabro
 
 ## Human gates
 
-The `approve` node has `shape=hexagon`, which makes it a **human gate** — the workflow pauses and waits for a person to choose a path.
+The `approve` node has `shape=hexagon`, which makes it a **human gate**: the workflow pauses and waits for a person to choose a path.
 
 ```dot
 approve [shape=hexagon, label="Approve Plan"]
@@ -55,17 +55,17 @@ The outgoing edge labels define the options. In the CLI, you'll see:
 Select:
 ```
 
-The `[A]` and `[R]` prefixes are keyboard accelerators — type the letter to select.
+The `[A]` and `[R]` prefixes are keyboard accelerators, so type the letter to select.
 
 ## The revision loop
 
-If you choose **Revise**, execution goes back to the `plan` node. The agent runs again with context about what happened — it knows its previous plan was rejected and can improve it. This cycle repeats until you approve.
+If you choose **Revise**, execution goes back to the `plan` node. The agent runs again with context about what happened: it knows its previous plan was rejected and can improve it. This cycle repeats until you approve.
 
 ```
 start → plan → approve → [Revise] → plan → approve → [Approve] → implement → simplify → exit
 ```
 
-Loops are natural in Fabro — just point an edge back to an earlier node. For safety, you can set `max_visits` on a node to prevent infinite loops:
+Loops are natural in Fabro. Just point an edge back to an earlier node. For safety, you can set `max_visits` on a node to prevent infinite loops:
 
 ```dot
 plan [label="Plan", max_visits=5, ...]
@@ -73,7 +73,7 @@ plan [label="Plan", max_visits=5, ...]
 
 ## Reasoning effort
 
-The `plan` node sets `reasoning_effort="high"`. This tells the model to think harder — useful for planning tasks that require careful analysis. The default is `high`, but you can set it to `low` or `medium` for simpler tasks to save cost and time.
+The `plan` node sets `reasoning_effort="high"`. This tells the model to think harder, which is useful for planning tasks that require careful analysis. You can set it to `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; leaving it unset lets the provider or model decide.
 
 ## Prompt file references
 
@@ -94,14 +94,14 @@ Each node receives a **preamble** summarizing what happened in prior stages. Whe
 - Files touched by prior stages
 - Run context values
 
-The agent reads `plan.md` (as instructed by its prompt), but the preamble gives it additional context about the overall workflow state. See [Context](/execution/context) for the full reference.
+The agent reads `plan.md` (as instructed by its prompt), but the preamble gives it additional context about the workflow state. See [Context](/execution/context) for the full reference.
 
 ## What you've learned
 
-- **Human gates** (`shape=hexagon`) pause for human input with edge labels as options
-- **Revision loops** are just edges that point back to earlier nodes
-- **Prompt file references** (`@path/to/file.md`) keep Graphviz files clean
-- **`reasoning_effort`** controls how hard the model thinks
+- Human gates (`shape=hexagon`) pause for human input with edge labels as options
+- Revision loops are just edges that point back to earlier nodes
+- Prompt file references (`@path/to/file.md`) keep Graphviz files clean
+- `reasoning_effort` controls how hard the model thinks
 - Nodes receive preambles summarizing prior stages
 
 ## Next

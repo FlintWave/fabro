@@ -13,8 +13,8 @@ Fabro is a workflow engine that reads a graph definition, executes nodes one at 
 
 Fabro has two interfaces, both backed by the same workflow engine:
 
-- **Direct CLI runs** (`fabro run`) — Run a single workflow synchronously in your terminal. Best for local development, one-off runs, and CI/CD.
-- **Server interface** (`fabro server start`) — Start an HTTP API server with a web UI, concurrent run scheduling, and team access. Best for production use and running at scale.
+- Direct CLI runs (`fabro run`). Run a single workflow synchronously in your terminal. Best for local development, one-off runs, and CI/CD.
+- Server interface (`fabro server start`). Start an HTTP API server with a web UI, concurrent run scheduling, and team access. Best for production use and running at scale.
 
 Both interfaces parse the same Graphviz files, use the same execution engine, and support the same sandbox providers. See [Deployment](/administration/deployment) for where the server runs and [Server Operations](/reference/server-operations) for operating it, or [Architecture](/reference/architecture) for internals.
 
@@ -22,9 +22,9 @@ Both interfaces parse the same Graphviz files, use the same execution engine, an
 
 You provide three inputs:
 
-1. **Workflow graph** (`.fabro`) — A Graphviz file defining nodes, edges, and their attributes. This is the core of what Fabro executes. See [Workflows](/core-concepts/workflows).
-2. **Run config** (`.toml`, optional) — Overrides for the default model, sandbox provider, setup commands, and variables. See [Run Configuration](/execution/run-configuration).
-3. **Credentials** — Provider credentials from the server-owned secret store or the invoking shell environment. See [Quick Start](/getting-started/quick-start).
+1. Workflow graph (`.fabro`). A Graphviz file defining nodes, edges, and their attributes. This is the core of what Fabro executes. See [Workflows](/core-concepts/workflows).
+2. Run config (`.toml`, optional). Overrides for the default model, sandbox provider, setup commands, and variables. See [Run Configuration](/execution/run-configuration).
+3. Credentials. Provider credentials from the server-owned secret store or the invoking shell environment. See [Quick Start](/getting-started/quick-start).
 
 ## Parse and validate
 
@@ -39,11 +39,11 @@ When you run `fabro run` or submit a run to the server, Fabro:
 
 The engine walks the graph starting from the start node. For each node it:
 
-1. **Resolves context** — Assembles the node's input from prior stage outputs, run context, and the workflow goal. The [fidelity](/workflows/stages-and-nodes#agent) setting controls how much prior context is included.
-2. **Dispatches to a handler** — Each [node type](/workflows/stages-and-nodes) has a handler: the agent handler runs an LLM tool loop, the command handler runs a shell script, the human handler waits for input, and so on.
-3. **Collects the outcome** — The handler returns a [stage outcome](/execution/outcomes) (`succeeded`, `failed`, `partially_succeeded`, or `skipped`), optional routing directives, and any context updates.
-4. **Selects the next edge** — Fabro evaluates outgoing edges using conditions, labels, and weights to pick the next node. See [Transitions](/workflows/transitions).
-5. **Checkpoints** — After each stage, Fabro writes a checkpoint so the run can be resumed if interrupted.
+1. Resolves context. Assembles the node's input from prior stage outputs, run context, and the workflow goal. The [fidelity](/workflows/stages-and-nodes#agent) setting controls how much prior context is included.
+2. Dispatches to a handler. Each [node type](/workflows/stages-and-nodes) has a handler: the agent handler runs an LLM tool loop, the command handler runs a shell script, the human handler waits for input, and so on.
+3. Collects the outcome. The handler returns a [stage outcome](/execution/outcomes) (`succeeded`, `failed`, `partially_succeeded`, or `skipped`), optional routing directives, and any context updates.
+4. Selects the next edge. Fabro evaluates outgoing edges using conditions, labels, and weights to pick the next node. See [Transitions](/workflows/transitions).
+5. Checkpoints. After each stage, Fabro writes a checkpoint so the run can be resumed if interrupted.
 
 This loop repeats until execution reaches the exit node or an unrecoverable error occurs.
 
@@ -53,17 +53,17 @@ This loop repeats until execution reaches the exit node or an unrecoverable erro
 
 ## Retries and error handling
 
-When a node fails, Fabro consults its [retry policy](/workflows/stages-and-nodes#common-node-attributes). If retries remain, the node re-executes with exponential backoff. If all retries are exhausted, the failure propagates to edge selection — a `condition="outcome=failed"` edge can route to a fix node, creating a recovery loop.
+When a node fails, Fabro consults its [retry policy](/workflows/stages-and-nodes#common-node-attributes). If retries remain, the node re-executes with exponential backoff. If all retries are exhausted, the failure propagates to edge selection: a `condition="outcome=failed"` edge can route to a fix node, creating a recovery loop.
 
 For workflows with loops, Fabro tracks failure signatures to detect infinite retry cycles. If the same failure repeats beyond the configured limit, the workflow aborts rather than looping forever.
 
 ## Goal gates
 
-Before completing, Fabro checks all nodes marked with `goal_gate=true`. If any goal gate node didn't succeed, the workflow fails — even though execution reached the exit node. This ensures critical quality checks can't be skipped by routing around them.
+Before completing, Fabro checks all nodes marked with `goal_gate=true`. If any goal gate node didn't succeed, the workflow fails, even though execution reached the exit node. This ensures critical quality checks can't be skipped by routing around them.
 
 ## Parallel execution
 
-When the engine hits a [parallel fan-out node](/workflows/stages-and-nodes#parallel-fan-out), it spawns concurrent branches, each with an isolated copy of the context. A [merge node](/workflows/stages-and-nodes#merge-fan-in) collects the results according to the join policy before the workflow continues on a single path.
+When the engine hits a [parallel fan-out node](/workflows/stages-and-nodes#parallel-fan-out), it spawns concurrent branches, each with an isolated copy of the context. A [merge node](/workflows/stages-and-nodes#merge-fan-in) collects the results using the join policy before the workflow continues on a single path.
 
 ## Sandboxes
 
@@ -79,11 +79,10 @@ Runs select a named environment via CLI flags (`--environment ci`) or run config
 
 ## Events and observability
 
-Every significant action — stage starts, LLM calls, tool invocations, edge selections, stage completions — is emitted as a structured event. These events power:
+Every significant action (stage starts, LLM calls, tool invocations, edge selections, stage completions) is emitted as a structured event. These events power:
 
 - The **web UI** for real-time run monitoring
 - **Run summaries** built from durable events, checkpoints, conclusions, and stage outputs
-- **DuckDB queries** via `fabro insights` for SQL-based analysis across runs
 
 See [Observability](/execution/observability) for more on querying run data.
 

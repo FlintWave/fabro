@@ -3,7 +3,7 @@ title: "Interviews"
 description: "How Fabro collects human input during workflow execution"
 ---
 
-When a workflow reaches a [human gate](/workflows/human-in-the-loop), it needs to pause and wait for a person to respond. The **interviewer** is the abstraction that makes this work — it presents a question, collects an answer, and returns it to the engine so execution can continue.
+When a workflow reaches a [human gate](/workflows/human-in-the-loop), it needs to pause and wait for a person to respond. The **interviewer** is the abstraction that makes this work: it presents a question, collects an answer, and returns it to the engine so execution can continue.
 
 Fabro ships with several interviewer implementations for different environments: an interactive terminal prompt for the CLI, a web-based queue for the API server and web UI, an auto-approve mode for CI, and record/replay support for testing.
 
@@ -15,8 +15,8 @@ Every human interaction is modeled as a `Question` with a type that determines h
 |---|---|---|
 | `YesNo` | Binary yes/no decision | `[Y/N]` prompt |
 | `Confirmation` | Confirm an action (like YesNo) | `[Y/N]` prompt |
-| `MultipleChoice` | Pick one option from a list | Arrow-key selector or numbered list |
-| `MultiSelect` | Pick one or more from a list | Checkbox selector |
+| `MultipleChoice` | Pick one option from a list | Numbered list with `Select:` prompt |
+| `MultiSelect` | Pick one or more from a list | Numbered list with `Select:` prompt |
 | `Freeform` | Open-ended text input | `>` prompt |
 
 ### Question structure
@@ -36,15 +36,17 @@ Each question carries metadata beyond the prompt text:
 
 ## Answer values
 
-Answers are one of seven variants:
+Answers are one of nine variants:
 
 | Value | Meaning |
 |---|---|
 | `Yes` | Affirmative response to a yes/no or confirmation question |
 | `No` | Negative response |
+| `Cancelled` | No answer was obtained because the pending question was cancelled |
 | `Selected(key)` | A specific option was chosen (carries the option key) |
+| `MultiSelected(keys)` | One or more options were chosen (carries the option keys) |
 | `Text(string)` | Free-text input |
-| `Interrupted` | No answer was obtained because the prompt ended early (EOF, cancel, disconnected session, exhausted replay/queue) |
+| `Interrupted` | No answer was obtained because the prompt ended early (EOF, disconnected session, exhausted replay/queue) |
 | `Skipped` | Legacy skip-style answer; not treated as approval by human gates |
 | `Timeout` | The question's timeout elapsed without a response |
 
@@ -63,11 +65,11 @@ The handler then passes the question to the interviewer, waits for an answer, an
 
 ## Channels
 
-The `Interviewer` trait has a simple interface — `ask(question) → answer` — and Fabro provides implementations for each delivery channel:
+The `Interviewer` trait has a simple interface (`ask(question) → answer`), and Fabro provides implementations for each delivery channel:
 
 ### Console
 
-The default for CLI runs. On a TTY, the console interviewer uses interactive widgets (arrow-key selection, checkbox multi-select, confirm prompts) via `dialoguer`. When stdin is piped (non-TTY), it falls back to a line-based reader with numbered options.
+The default for CLI runs. The console interviewer presents a line-based prompt on TTYs and when stdin is piped alike: numbered options for multiple-choice and multi-select questions, a `[Y/N]:` prompt for yes/no and confirmation questions, and a `>` prompt for freeform input. Answer by typing a number, `y`/`n`, or free text and pressing Enter.
 
 ```bash
 fabro run workflow.fabro
@@ -82,7 +84,7 @@ If the console prompt is canceled or stdin is already closed, the interviewer re
 
 ### Web
 
-The default for API server runs. The web interviewer holds questions in a queue until answers are submitted externally — typically by the web UI or a REST API call. Each question gets a unique ID (e.g. `q-1`), and the `ask()` call blocks on a oneshot channel until `submit_answer(id, answer)` is called.
+The default for API server runs. The web interviewer holds questions in a queue until answers are submitted externally, typically by the web UI or a REST API call. Each question gets a unique ID (e.g. `q-1`), and the `ask()` call blocks on a oneshot channel until `submit_answer(id, answer)` is called.
 
 This decoupling means the workflow engine and the user interface can run in different processes. The web UI shows pending questions in the run page's interview dock, listens for interview events, and posts answers back to the API.
 

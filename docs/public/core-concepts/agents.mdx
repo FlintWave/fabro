@@ -3,16 +3,16 @@ title: "Agents"
 description: "Core agent concepts in Fabro"
 ---
 
-An agent in Fabro is an LLM session with access to tools. When a workflow reaches an agent node, Fabro creates a session, sends the prompt and prior context to the model, and lets the agent work autonomously — reading files, running commands, editing code, spawning sub-agents — until it decides the task is complete.
+An agent in Fabro is an LLM session with access to tools. When a workflow reaches an agent node, Fabro creates a session, sends the prompt and prior context to the model, and lets the agent work autonomously (reading files, running commands, editing code, spawning sub-agents) until it decides the task is complete.
 
 ## The agent loop
 
 Each agent turn follows the same cycle:
 
-1. **Send** — Fabro sends the conversation history (system prompt, prior messages, tool results) to the LLM
-2. **Receive** — The model responds with text, tool calls, or both
-3. **Execute** — Fabro executes any tool calls in the sandbox and appends the results to the conversation
-4. **Repeat** — If the model made tool calls, go back to step 1. If it responded with only text, the agent is done.
+1. Send. Fabro sends the conversation history (system prompt, prior messages, tool results) to the LLM
+2. Receive. The model responds with text, tool calls, or both
+3. Execute. Fabro executes any tool calls in the sandbox and appends the results to the conversation
+4. Repeat. If the model made tool calls, go back to step 1. If it responded with only text, the agent is done.
 
 This loop continues until the model stops calling tools, indicating it considers the task complete. Fabro also enforces guardrails: token budgets, turn limits, and loop detection to prevent runaway agents.
 
@@ -22,7 +22,7 @@ Every agent node uses a **backend** that determines how Fabro interacts with the
 
 ### API backend (default)
 
-Fabro manages the agent loop directly — it calls the LLM provider's API, executes built-in tools in the sandbox, and tracks file changes via tool call events. This is the default and supports the full feature set:
+Fabro manages the agent loop directly, calling the LLM provider's API, executing built-in tools in the sandbox, and tracking file changes via tool call events. This is the default and supports the full feature set:
 
 - [Session caching](/execution/context) via `fidelity="full"` + `thread_id`
 - [Sub-agents](/agents/subagents)
@@ -67,10 +67,10 @@ The legacy `acp_command` attribute is rejected; use `acp.command` for shell comm
 
 ### When to use the ACP backend
 
-- **Protocol adapters** — run ACP-compatible coding agents through a stable stdio protocol
-- **Sandbox parity** — keep agent process execution inside Fabro's local or Docker sandbox
-- **Command-owned auth** — let the ACP command manage its own provider login, model selection, and credentials
-- **Custom agents** — use `acp.command` or `acp.config` for a checked-in or preinstalled ACP adapter
+- Protocol adapters. Run ACP-compatible coding agents through a stable stdio protocol
+- Sandbox parity. Keep agent process execution inside Fabro's local or Docker sandbox
+- Command-owned auth. Let the ACP command manage its own provider login, model selection, and credentials
+- Custom agents. Use `acp.command` or `acp.config` for a checked-in or preinstalled ACP adapter
 
 ## Tools
 
@@ -93,7 +93,7 @@ See [Tools](/agents/tools) for the full reference.
 
 ## Prompts
 
-The agent's behavior is shaped by its prompt — the task instructions set in the `prompt` attribute of the workflow node. Prompts can be inline strings or references to external Markdown files:
+The agent's behavior is shaped by its prompt, the task instructions set in the `prompt` attribute of the workflow node. Prompts can be inline strings or references to external Markdown files:
 
 ```dot
 // Inline prompt
@@ -113,7 +113,7 @@ See [Sub-agents](/agents/subagents) for details.
 
 ## Skills
 
-Skills are reusable prompt templates that extend an agent's capabilities for common tasks — code review, test writing, refactoring, and more. They're discovered automatically from the project and can be invoked by the agent during its session.
+Skills are reusable prompt templates that extend an agent's capabilities for common tasks (code review, test writing, refactoring, and more). They're discovered automatically from the project and can be invoked by the agent during its session.
 
 See [Skills](/agents/skills) for details.
 

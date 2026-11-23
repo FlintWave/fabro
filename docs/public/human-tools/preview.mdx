@@ -3,24 +3,28 @@ title: "Preview"
 description: "Preview running applications in sandbox environments from your browser"
 ---
 
-When an agent starts a web server or other network service inside a sandbox, you can generate a time-limited preview URL to access it from your browser — no port forwarding or SSH tunnels required. This lets you visually inspect what the agent is building, test interactive features, and verify UI changes while the workflow is still running.
+When an agent starts a web server or other network service inside a sandbox, you can generate a time-limited preview URL to access it from your browser, with no port forwarding or SSH tunnels required. This lets you visually inspect what the agent is building, test interactive features, and verify UI changes while the workflow is still running.
 
 <Note>
-Preview URLs require the **Daytona** sandbox provider. Local, Docker, and exe.dev sandboxes do not support this feature.
+A signed, token-authenticated preview URL that works from any browser is available only with the **Daytona** sandbox provider (`--signed`). Plain (unsigned) preview URLs are also available for other providers that support them: Docker opens a local port forward, and Local returns the port on `127.0.0.1` directly. exe.dev sandboxes may not support preview URLs.
 </Note>
 
 ## How it works
 
-When you request a preview, Fabro generates a time-limited, token-authenticated URL that proxies traffic to the specified port on the sandbox. The URL is accessible from any browser without additional credentials — the signed token in the URL handles authentication.
+When you request a signed preview (`--signed`), Fabro generates a time-limited, token-authenticated URL that proxies traffic to the specified port on the sandbox. The URL is accessible from any browser without additional credentials: the signed token in the URL handles authentication. Plain (unsigned) previews, used by default from the CLI and the web UI, return a direct URL and ignore the TTL.
+
+For a signed preview:
 
 1. An agent starts a service on a port inside the sandbox (e.g. a dev server on port 3000)
-2. You request a preview URL for that port — via the web UI button or the API
+2. You request a signed preview URL for that port, with `--signed` on the CLI or `signed` set in the API request
 3. Fabro returns a signed URL that you open in your browser
 4. The URL expires after the configured TTL (up to 24 hours), after which a new one must be generated
 
+The web UI's Preview button requests an unsigned URL, so steps 3 and 4 do not apply to it.
+
 ## Using preview from the CLI
 
-Use `fabro sandbox preview` to generate a preview URL for any run with an active Daytona sandbox:
+Use `fabro sandbox preview` to generate a preview URL for any run with an active sandbox that supports preview URLs:
 
 ```bash
 fabro sandbox preview <run-id> 3000              # URL + token + curl example
@@ -32,7 +36,7 @@ See [`fabro sandbox preview`](/reference/cli#fabro-sandbox-preview) for the full
 
 ## Using preview from the web UI
 
-When viewing a run with an active sandbox, the run detail page shows a **Preview** button in the toolbar. Clicking it generates a preview URL for port 3000 with a 1-hour TTL and opens it in a new browser tab.
+When viewing a run with an active sandbox, the run detail page shows a **Preview** button in the toolbar. Clicking it generates an (unsigned) preview URL for port 3000 and opens it in a new browser tab.
 
 ## Using preview from the API
 
@@ -77,8 +81,8 @@ Start an API server in the sandbox and use the preview URL as the base for `curl
 
 ## Tips
 
-- **Use `--preserve-sandbox`** to keep the sandbox alive after the workflow finishes. This gives you time to generate and use preview URLs for post-run inspection.
-- **Pair with human gates** — place a human gate after the agent starts a service so you can preview before approving the next step.
-- **Multiple ports** — generate separate preview URLs for different ports (e.g. frontend on 3000, API on 8080) by making multiple API calls.
-- **TTL selection** — use shorter TTLs (300–900 seconds) for quick checks and longer TTLs (3600+ seconds) when you need sustained access during a review.
-- **Sandbox must be running** — preview URLs only work while the sandbox is active. If the sandbox has been stopped or destroyed, the URL will stop working even if the token hasn't expired.
+- Use `--preserve-sandbox` to keep the sandbox alive after the workflow finishes. This gives you time to generate and use preview URLs for post-run inspection.
+- Pair with human gates. Place a human gate after the agent starts a service so you can preview before approving the next step.
+- Multiple ports. Generate separate preview URLs for different ports (e.g. frontend on 3000, API on 8080) by making multiple API calls.
+- TTL selection. Use shorter TTLs (300–900 seconds) for quick checks and longer TTLs (3600+ seconds) when you need sustained access during a review.
+- Sandbox must be running. Preview URLs only work while the sandbox is active. If the sandbox has been stopped or destroyed, the URL will stop working even if the token hasn't expired.

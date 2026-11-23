@@ -11,9 +11,9 @@ VPN connections enable sandboxes to connect to private networks, giving agents a
 
 ## Use cases
 
-- **Access private services** — connect to internal APIs, databases, or staging environments behind a corporate firewall
-- **Test against production-like infrastructure** — reach services on a private network without exposing them publicly
-- **Team collaboration** — share a VPN network so sandboxes and developer machines can communicate directly
+- Access private services. Connect to internal APIs, databases, or staging environments behind a corporate firewall
+- Test against production-like infrastructure. Reach services on a private network without exposing them publicly
+- Team collaboration. Share a VPN network so sandboxes and developer machines can communicate directly
 
 ## Supported providers
 
@@ -30,8 +30,8 @@ When VPN is enabled, Fabro installs the VPN client inside the sandbox, connects 
 
 Tailscale provides two authentication methods:
 
-- **Auth key** — non-interactive authentication suitable for automated runs and CI/CD pipelines. You provide a Tailscale auth key and the sandbox connects without manual intervention.
-- **Browser login** — interactive authentication where Fabro generates a login URL. You visit the URL in your browser to authorize the sandbox device on your Tailscale network.
+- Auth key. Non-interactive authentication suitable for automated runs and CI/CD pipelines. You provide a Tailscale auth key and the sandbox connects without manual intervention.
+- Browser login. Interactive authentication where Fabro generates a login URL. You visit the URL in your browser to authorize the sandbox device on your Tailscale network.
 
 ### OpenVPN
 
