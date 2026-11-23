@@ -74,7 +74,7 @@ Prompt and goal templates can use static MiniJinja includes to share partials:
 Write a plan for {{ goal }}.
 ```
 
-Include names must be literal strings, resolve relative to the file being rendered, and stay under that template root. Dynamic include expressions such as `{% include inputs.partial %}` are rejected during manifest bundling because Fabro must know every template file before a sandbox run starts.
+Include names must be literal strings, resolve relative to the file being rendered, and stay under that template root. Expressions that are not literal strings, such as `{% include inputs.partial %}`, are rejected during manifest bundling because Fabro must know every template file before a sandbox run starts.
 
 ### Fallback to label
 
@@ -89,7 +89,7 @@ This is convenient for simple nodes but not recommended for production workflows
 
 ## Prompt assembly
 
-The prompt the agent receives is not just the `prompt` attribute. Fabro prepends a **preamble** (unless fidelity is `full`) that summarizes what happened in prior stages:
+The prompt the agent receives includes more than the `prompt` attribute. Fabro prepends a **preamble** (unless fidelity is `full`) that summarizes what happened in prior stages:
 
 ```
 [Preamble: goal, completed stages, context values]
@@ -257,7 +257,7 @@ to load its instructions, then follow them.
 </Accordion>
 
 <Note>
-Fabro selects an agent profile for the model. Anthropic, Claude 5, OpenAI, GPT-5.6, Gemini, and Kimi profiles can use different identity text, tool names, tool guidance, and coding conventions. The overall system-prompt structure is the same.
+Fabro selects an agent profile for the model. Anthropic, Claude 5, OpenAI, GPT-5.6, Gemini, and Kimi profiles can use different identity text, tool names, tool guidance, and coding conventions. The system-prompt structure is the same across profiles.
 </Note>
 
 ### Project docs

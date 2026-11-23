@@ -26,9 +26,9 @@ These tools are registered automatically when the session starts. They inherit t
 
 Each sub-agent runs in its own session:
 
-- **Own conversation** -- the child starts with a fresh LLM history
-- **Own tool access** -- the child can use the same tools as the parent
-- **Concurrent execution** -- the parent can continue working before calling `wait`
+- Own conversation. The child starts with a fresh LLM history.
+- Own tool access. The child can use the same tools as the parent.
+- Concurrent execution. The parent can continue working before calling `wait`.
 
 The parent can spawn multiple sub-agents and synchronize with them later.
 
@@ -40,7 +40,7 @@ Call `wait` again to receive the new turn's result. Call `close_agent` when the 
 
 ## Depth limits
 
-Sub-agents can themselves spawn sub-agents, creating a hierarchy. The coding agent limits how many child sessions a stage can hold open at once and how deep the tree can grow; the defaults keep one level of children.
+Sub-agents can themselves spawn sub-agents, creating a hierarchy. The coding agent bounds how many sessions in the tree can be open at once, counting the root session: the default is four, which leaves three open children across the whole tree however they are nested. A finished child still holds its slot until it is closed. There is no depth limit and no separate cap on how many children a session spawns over its life.
 
 If a child tries to exceed the limit, `spawn_agent` returns an error immediately.
 
@@ -50,8 +50,8 @@ Sub-agent failures do not automatically fail the parent stage. The parent receiv
 
 Common cases:
 
-- **Panics or errors** -- returned as a failed `wait` result
-- **`spawn_agent` fails** -- returned immediately as a tool result
+- Panics or errors. Returned as a failed `wait` result
+- `spawn_agent` fails. Returned immediately as a tool result
 
 ## Event forwarding
 
@@ -64,7 +64,7 @@ Parent-owned lifecycle events:
 | `agent.sub.spawned` | A sub-agent was created |
 | `agent.sub.completed` | A sub-agent finished successfully |
 | `agent.sub.failed` | A sub-agent failed |
-| `agent.sub.closed` | A sub-agent was cancelled |
+| `agent.sub.closed` | A sub-agent was closed |
 
 Forwarded child activity:
 
@@ -94,10 +94,10 @@ High-volume streaming events such as text deltas and tool output deltas are filt
 
 Sub-agents are most useful for:
 
-- **Parallel research** -- inspect multiple code paths at once
-- **Isolation** -- try a risky approach without polluting the parent's context
-- **Divide and conquer** -- split an independent task into smaller pieces
-- **Context management** -- offload work when the parent session is getting crowded
+- Parallel research. Inspect multiple code paths at once.
+- Isolation. Try a risky approach without polluting the parent's context.
+- Divide and conquer. Split an independent task into smaller pieces.
+- Context management. Offload work when the parent session is getting crowded.
 
 Use [child runs](/execution/child-runs) instead when the delegated work should be a separate Fabro run with its own workflow, lifecycle, sandbox, checkpoints, and outputs.
 
