@@ -1946,3 +1946,63 @@ async fn a_protected_path_violation_is_not_a_success_for_routing() {
         "{stages:?}"
     );
 }
+
+/// A stage that commits a protected change itself ends as a
+/// `protected_path_violation` failure that routes on that class, and the
+/// checkpoint commit's tree keeps the protected file at its base content.
+#[tokio::test]
+async fn a_protected_path_change_committed_by_the_stage_is_restored() {
+    let mut harness = Harness::new().await;
+    let (origin, _head) = upstream(&harness.run_dir.with_file_name("upstream"), 1).await;
+    harness.source = Some(file_source(&origin, "main", None));
+    harness.protected_globs = vec!["README.md".to_string()];
+    let settings = SETTINGS;
+    let workflow = workflow(
+        r#"  write [shape=parallelogram, script="echo tampered >> README.md && git add README.md && git -c user.name=agent -c user.email=agent@example.invalid commit -q -m sneak && echo unprotected > notes.txt"]"#,
+        "  start -> write -> exit",
+    );
+    let outcome = harness.run(&workflow, settings).await;
+    assert!(
+        outcome
+            .failure
+            .as_deref()
+            .unwrap_or("")
+            .contains("protected paths restored: README.md"),
+        "{outcome:?}"
+    );
+
+    let inspection = harness.inspection().await;
+    let attempts: Vec<_> = inspection
+        .executions
+        .iter()
+        .filter_map(|execution| execution.engine.as_ref())
+        .flat_map(|engine| engine.attempts.iter())
+        .collect();
+    let write = attempts
+        .iter()
+        .find(|attempt| attempt.node.as_deref() == Some("write"))
+        .expect("the write stage finished");
+    assert_eq!(write.status, "failure");
+    assert_eq!(
+        write.failure.as_ref().map(|failure| failure.class.as_str()),
+        Some(PROTECTED_PATH_VIOLATION_CLASS)
+    );
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let checkpoint = harness
+        .checkpoints()
+        .last()
+        .cloned()
+        .expect("a checkpoint landed");
+    assert_eq!(
+        git(&path, &["show", &format!("{}:README.md", checkpoint.1)]).await,
+        "revision 1",
+        "the protected file's HEAD content is committed"
+    );
+    assert_eq!(
+        git(&path, &["show", &format!("{}:notes.txt", checkpoint.1)]).await,
+        "unprotected",
+        "the unprotected change is committed"
+    );
+}

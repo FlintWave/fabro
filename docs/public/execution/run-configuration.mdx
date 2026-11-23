@@ -484,7 +484,7 @@ commit_timeout = "30s"
 | Field | Description |
 |---|---|
 | `exclude_globs` | Glob patterns for files to exclude from checkpoint commits. Uses git pathspec `:(glob,exclude)` syntax. |
-| `protected_globs` | Glob patterns for files that stages may not change. At each checkpoint, changed paths matching these globs are restored to `HEAD` and the stage fails with failure class `protected_path_violation`. |
+| `protected_globs` | Glob patterns for files that stages may not change. At each checkpoint, changed paths matching these globs are restored to their state before the stage ran and the stage fails with failure class `protected_path_violation`. Files that Git ignores are not listed, so an ignored file created under a protected path is neither reported nor removed. |
 | `skip_git_hooks` | Accepted for compatibility. Fabro-managed run-branch checkpoint commits never run local Git commit hooks (e.g. `pre-commit`, `commit-msg`); the sandbox driver disables repository hooks on every git command it runs. Does not affect Fabro workflow `[[run.hooks]]`. |
 | `commit_timeout` | Accepted for compatibility. The per-node run-branch checkpoint commit runs under the sandbox driver's git command budget; no repository hook can prolong it. |
 

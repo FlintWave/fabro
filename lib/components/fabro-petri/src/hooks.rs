@@ -109,7 +109,8 @@ use petri_runtime::executor::{EnvError, ExecEnv};
 use petri_runtime::ir::{
     ExecutionId, FailureInfo, FinalizationFailure, RunStatus, ScopeId, Status,
 };
-use serde_json::json;
+use serde_json::{Value, json};
+use smol_str::SmolStr;
 use tokio::sync::{Mutex as AsyncMutex, OnceCell};
 use tokio::{fs, time};
 use tracing::{debug, info, warn};
@@ -469,6 +470,10 @@ pub struct FabroHooks {
     /// The checkpoint failure that ended the run, when one did.
     failure:            Mutex<Option<String>>,
     publisher:          Option<Arc<dyn RunPublisher>>,
+    /// Base commit per checkpoint key for protected-path comparison, or the
+    /// error reading it, so a stage that commits a protected change is
+    /// never let through on a failed lookup.
+    protected_bases:    Mutex<HashMap<CheckpointKey, Result<Option<String>, String>>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
     resumed:            bool,
@@ -538,6 +543,7 @@ impl FabroHooks {
             failure: Mutex::default(),
             publisher: spec.publisher,
             resumed,
+            protected_bases: Mutex::default(),
             restore: OnceCell::new(),
             store,
         }
@@ -1490,6 +1496,87 @@ impl FabroHooks {
         Ok(publication)
     }
 
+    /// Whether base tracking is active for this hook configuration.
+    fn tracks_protected_bases(&self) -> bool {
+        self.checkpoint_enabled && self.workspaces.has_protected_globs()
+    }
+
+    /// Remove and return the recorded base for a checkpoint key.
+    fn take_protected_base(&self, key: CheckpointKey) -> Option<Result<Option<String>, String>> {
+        sync::lock(&self.protected_bases).remove(&key)
+    }
+
+    /// Resolve the base for a stage: a recorded value wins, a recorded
+    /// error is propagated, and a missing record must still catch uncommitted
+    /// changes by reading the workspace's current HEAD.
+    async fn protected_base(
+        &self,
+        site: &Site,
+        recorded: Option<Result<Option<String>, String>>,
+    ) -> Result<Option<String>, String> {
+        if let Some(recorded) = recorded {
+            return recorded;
+        }
+        self.workspaces
+            .head(site)
+            .await
+            .map_err(|error| collect_chain(&error).join(": "))
+    }
+
+    fn fail_run_checkpoint(
+        &self,
+        node: &str,
+        key: CheckpointKey,
+        message: String,
+        prepared: &mut Prepared,
+    ) {
+        warn!(
+            run_id = %self.run_id,
+            node,
+            execution = key.execution,
+            firing = key.firing,
+            attempt = key.attempt,
+            error = %message,
+            "checkpoint failed; the run ends"
+        );
+        self.fail_run(&message);
+        prepared.adjustment.status = Some(Status::Failure(
+            FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
+        ));
+        prepared.adjustment.reason = Some(message);
+    }
+
+    fn apply_protected_path_violation(
+        prepared: &mut Prepared,
+        effective: &mut Status,
+        original_output: Value,
+        original_context_updates: BTreeMap<SmolStr, Value>,
+        message: String,
+    ) {
+        let new_status = Status::Failure(
+            FailureInfo::new(message.clone()).with_class(PROTECTED_PATH_VIOLATION_CLASS),
+        );
+        prepared.adjustment.status = Some(new_status.clone());
+        prepared.adjustment.reason = Some(message);
+        let mut output = match original_output {
+            Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+        output.insert("outcome".to_string(), json!("failed"));
+        output.insert(
+            "failure_class".to_string(),
+            json!(PROTECTED_PATH_VIOLATION_CLASS),
+        );
+        prepared.adjustment.output = Some(Value::Object(output));
+        let mut context_updates = original_context_updates;
+        context_updates.insert(
+            "failure_class".into(),
+            json!(PROTECTED_PATH_VIOLATION_CLASS),
+        );
+        prepared.adjustment.context_updates = Some(context_updates);
+        *effective = new_status;
+    }
+
     /// Hold at a test gate when one is set for this point and node.
     async fn gate(&self, point: &str, node: &str) {
         let Some(dir) = &self.test_gates else {
@@ -1587,19 +1674,21 @@ fn is_checkpoint_failure(status: &Status) -> bool {
     matches!(status, Status::Failure(info) if info.class.as_str() == CHECKPOINT_FAILED_CLASS)
 }
 
+const PROTECTED_PATHS_MESSAGE_LIMIT: usize = 20;
+
 fn protected_paths_message(paths: &[String]) -> String {
     let total = paths.len();
-    let shown: Vec<&String> = paths.iter().take(20).collect();
-    let shown = shown
+    let shown = paths
         .iter()
-        .map(|p| p.as_str())
+        .take(PROTECTED_PATHS_MESSAGE_LIMIT)
+        .map(String::as_str)
         .collect::<Vec<_>>()
         .join(", ");
-    if total > 20 {
+    if total > PROTECTED_PATHS_MESSAGE_LIMIT {
         format!(
             "protected paths restored: {}; and {} more",
             shown,
-            total - 20
+            total - PROTECTED_PATHS_MESSAGE_LIMIT
         )
     } else {
         format!("protected paths restored: {shown}")
@@ -1613,6 +1702,26 @@ impl ExecutionHooks for FabroHooks {
         context: &HookContext,
         request: AdmitAttempt,
     ) -> AttemptDecision {
+        let key = CheckpointKey {
+            execution: context.execution.raw(),
+            firing:    request.view.firing.raw(),
+            attempt:   request.view.attempt.raw(),
+        };
+        // No work when the feature is off or there are no protected globs.
+        if !self.tracks_protected_bases() {
+            return self.inner.before_attempt(context, request).await;
+        }
+        let scope = request.view.scope;
+        let base = match self.site_of(context, scope).await {
+            Ok(Some((_, site))) => self
+                .workspaces
+                .head(&site)
+                .await
+                .map_err(|error| collect_chain(&error).join(": ")),
+            Ok(None) => Ok(None),
+            Err(error) => Err(collect_chain(&error).join(": ")),
+        };
+        sync::lock(&self.protected_bases).insert(key, base);
         self.inner.before_attempt(context, request).await
     }
 
@@ -1631,6 +1740,9 @@ impl ExecutionHooks for FabroHooks {
         let original_outcome = request.outcome.clone();
         let original = original_outcome.status.clone();
         let origin = request.origin;
+        // Remove this attempt's recorded base up front, so no entry is left
+        // behind on any path through this method.
+        let recorded_base = self.take_protected_base(key);
         let mut prepared = self.inner.prepare_result(context, request).await?;
         let mut effective = prepared.adjustment.status.clone().unwrap_or(original);
         if matches!(effective, Status::Cancelled) {
@@ -1639,62 +1751,40 @@ impl ExecutionHooks for FabroHooks {
         // Restore any protected paths the stage touched before committing.
         // Only relevant when checkpointing is enabled, since there is no
         // checkpoint commit otherwise.
-        if self.checkpoint_enabled {
+        if self.tracks_protected_bases() {
             let site = match self.site_of(context, scope).await {
                 Ok(Some((_, site))) => Some(site),
                 Ok(None) => None,
                 Err(error) => {
-                    let message = error.to_string();
-                    warn!(
-                        run_id = %self.run_id,
-                        node,
-                        execution = key.execution,
-                        firing = key.firing,
-                        attempt = key.attempt,
-                        error = %message,
-                        "checkpoint failed; the run ends"
-                    );
-                    self.fail_run(&message);
-                    prepared.adjustment.status = Some(Status::Failure(
-                        FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
-                    ));
-                    prepared.adjustment.reason = Some(message);
+                    let message = error.render();
+                    self.fail_run_checkpoint(&node, key, message, &mut prepared);
                     return Ok(prepared);
                 }
             };
             if let Some(site) = site {
-                match self.workspaces.restore_protected(&site).await {
+                let base = match self.protected_base(&site, recorded_base).await {
+                    Ok(base) => base,
+                    Err(message) => {
+                        self.fail_run_checkpoint(&node, key, message, &mut prepared);
+                        return Ok(prepared);
+                    }
+                };
+                match self
+                    .workspaces
+                    .restore_protected(&site, base.as_deref())
+                    .await
+                {
                     Ok(paths) if !paths.is_empty() => {
                         let message = protected_paths_message(&paths);
                         match effective {
                             Status::Success | Status::PartialSuccess { .. } => {
-                                let new_status = Status::Failure(
-                                    FailureInfo::new(message.clone())
-                                        .with_class(PROTECTED_PATH_VIOLATION_CLASS),
+                                Self::apply_protected_path_violation(
+                                    &mut prepared,
+                                    &mut effective,
+                                    original_outcome.output.clone(),
+                                    original_outcome.context_updates.clone(),
+                                    message,
                                 );
-                                prepared.adjustment.status = Some(new_status.clone());
-                                prepared.adjustment.reason = Some(message);
-                                // Route the adjusted failure like any other failed
-                                // stage: overwrite only the routing keys, keeping
-                                // the stage's other output and context keys.
-                                let mut output = match original_outcome.output {
-                                    serde_json::Value::Object(map) => map,
-                                    _ => serde_json::Map::new(),
-                                };
-                                output.insert("outcome".to_string(), json!("failed"));
-                                output.insert(
-                                    "failure_class".to_string(),
-                                    json!(PROTECTED_PATH_VIOLATION_CLASS),
-                                );
-                                prepared.adjustment.output =
-                                    Some(serde_json::Value::Object(output));
-                                let mut context_updates = original_outcome.context_updates.clone();
-                                context_updates.insert(
-                                    "failure_class".into(),
-                                    json!(PROTECTED_PATH_VIOLATION_CLASS),
-                                );
-                                prepared.adjustment.context_updates = Some(context_updates);
-                                effective = new_status;
                             }
                             Status::Failure(_) => {
                                 prepared.notes.push(Note::new(
@@ -1702,31 +1792,19 @@ impl ExecutionHooks for FabroHooks {
                                     serde_json::json!({ "paths": paths }),
                                 ));
                             }
-                            _ => {}
+                            Status::Skipped | Status::Cancelled | Status::TimedOut => {}
                         }
                     }
                     Ok(_) => {}
                     Err(error) => {
-                        let message = error.to_string();
-                        warn!(
-                            run_id = %self.run_id,
-                            node,
-                            execution = key.execution,
-                            firing = key.firing,
-                            attempt = key.attempt,
-                            error = %message,
-                            "checkpoint failed; the run ends"
-                        );
-                        self.fail_run(&message);
-                        prepared.adjustment.status = Some(Status::Failure(
-                            FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
-                        ));
-                        prepared.adjustment.reason = Some(message);
+                        let message = collect_chain(&error).join(": ");
+                        self.fail_run_checkpoint(&node, key, message, &mut prepared);
                         return Ok(prepared);
                     }
                 }
             }
         }
+
         match self
             .snapshot(context, scope, key, &node, &effective, origin)
             .await
@@ -1735,20 +1813,7 @@ impl ExecutionHooks for FabroHooks {
             Ok(None) => {}
             Err(error) => {
                 let message = error.render();
-                warn!(
-                    run_id = %self.run_id,
-                    node,
-                    execution = key.execution,
-                    firing = key.firing,
-                    attempt = key.attempt,
-                    error = %message,
-                    "checkpoint failed; the run ends"
-                );
-                self.fail_run(&message);
-                prepared.adjustment.status = Some(Status::Failure(
-                    FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
-                ));
-                prepared.adjustment.reason = Some(message);
+                self.fail_run_checkpoint(&node, key, message, &mut prepared);
             }
         }
         Ok(prepared)
@@ -1928,7 +1993,10 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use fabro_store::{ArtifactStore, StoredPlatformRecord};
+    use fabro_types::settings::run::RunCheckpointSettings;
     use object_store::memory::InMemory;
+    use tokio::fs;
+    use tokio::process::Command;
     use tokio::sync::Barrier;
 
     use super::*;
@@ -2411,5 +2479,159 @@ mod tests {
         assert_eq!(selected.len(), ARTIFACT_MAX_FILES);
         assert_eq!(selected[0], ("tiny.txt".to_string(), 1));
         assert!(selected.iter().all(|(path, _)| path != "huge.bin"));
+    }
+
+    fn protected_hooks(root: &Path, run_id: RunId, protected_globs: Vec<String>) -> FabroHooks {
+        let checkpoint = RunCheckpointSettings {
+            protected_globs,
+            ..RunCheckpointSettings::default()
+        };
+        let store = ArtifactStore::new(Arc::new(InMemory::new()), "artifacts");
+        FabroHooks::new(
+            HooksSpec {
+                records:         Arc::new(MemoryPlatformRecords::new()),
+                git:             RunGitSettings {
+                    checkpoint,
+                    ..RunGitSettings::default()
+                },
+                artifacts:       vec![],
+                test_gates:      None,
+                artifact_writer: Arc::new(StoreArtifactWriter::new(store)),
+                source:          None,
+                publisher:       None,
+            },
+            Arc::new(NoHooks),
+            run_id,
+            RunKey::new(run_id.to_string()),
+            root.to_path_buf(),
+            Arc::new(petri_store::MemoryRunStore::new()),
+            false,
+            None,
+        )
+    }
+
+    async fn init_repo(path: &Path) -> String {
+        fs::create_dir_all(path).await.unwrap();
+        fs::write(path.join("README.md"), "hello\n").await.unwrap();
+        for args in [vec!["init", "-q"], vec!["add", "."], vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "initial",
+        ]] {
+            let status = Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .status()
+                .await
+                .unwrap();
+            assert!(status.success());
+        }
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(path)
+            .output()
+            .await
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    async fn commit_readme(path: &Path, content: &str) -> String {
+        fs::write(path.join("README.md"), content).await.unwrap();
+        for args in [vec!["add", "."], vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "second",
+        ]] {
+            let status = Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .status()
+                .await
+                .unwrap();
+            assert!(status.success());
+        }
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(path)
+            .output()
+            .await
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn base_tracking_is_off_without_protected_globs() {
+        let root = tempfile::tempdir().unwrap();
+        let run = RunId::new();
+        let without = protected_hooks(root.path(), run, vec![]);
+        assert!(!without.tracks_protected_bases());
+        let run2 = RunId::new();
+        let with = protected_hooks(root.path(), run2, vec!["README.md".to_string()]);
+        assert!(with.tracks_protected_bases());
+    }
+
+    #[tokio::test]
+    async fn a_missing_recorded_base_falls_back_to_the_workspace_head() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("ws");
+        let head = init_repo(&path).await;
+        let hooks = protected_hooks(root.path(), RunId::new(), vec!["README.md".to_string()]);
+        let site = Site::Host(path);
+        let got = hooks.protected_base(&site, None).await.unwrap();
+        assert_eq!(got.as_deref(), Some(head.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a_recorded_base_is_used_after_head_moves() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("ws");
+        let recorded = init_repo(&path).await;
+        let new_head = commit_readme(&path, "changed\n").await;
+        assert_ne!(recorded, new_head);
+        let hooks = protected_hooks(root.path(), RunId::new(), vec!["README.md".to_string()]);
+        let site = Site::Host(path);
+        let got = hooks
+            .protected_base(&site, Some(Ok(Some(recorded.clone()))))
+            .await
+            .unwrap();
+        assert_eq!(got.as_deref(), Some(recorded.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a_recorded_base_error_is_returned() {
+        let root = tempfile::tempdir().unwrap();
+        let hooks = protected_hooks(root.path(), RunId::new(), vec!["README.md".to_string()]);
+        let path = root.path().join("ws");
+        let site = Site::Host(path);
+        let got = hooks
+            .protected_base(&site, Some(Err("boom".to_string())))
+            .await;
+        assert_eq!(got.unwrap_err(), "boom");
+    }
+
+    #[test]
+    fn taking_a_recorded_base_removes_it() {
+        let root = tempfile::tempdir().unwrap();
+        let hooks = protected_hooks(root.path(), RunId::new(), vec!["README.md".to_string()]);
+        let key = CheckpointKey {
+            execution: 1,
+            firing:    2,
+            attempt:   3,
+        };
+        sync::lock(&hooks.protected_bases).insert(key, Ok(Some("abc".to_string())));
+        let taken = hooks.take_protected_base(key);
+        assert_eq!(taken, Some(Ok(Some("abc".to_string()))));
+        assert!(hooks.take_protected_base(key).is_none());
+        assert!(sync::lock(&hooks.protected_bases).is_empty());
     }
 }
