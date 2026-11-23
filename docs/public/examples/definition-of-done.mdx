@@ -1,11 +1,11 @@
 ---
 title: "Definition of Done"
-description: "Audit a codebase against specification checklists, triage failures, implement fixes, and verify — with optional multi-model consensus"
+description: "Audit a codebase against specification checklists, triage failures, implement fixes, and verify, with optional multi-model consensus"
 ---
 
 The Definition of Done (DoD) pattern reads one or more specification documents with explicit checklists, audits the current implementation against every checkbox, triages failures, implements fixes, and verifies the result. It's a structured way to close the gap between "spec says X" and "code does X."
 
-This pattern is useful when you have detailed specs with acceptance criteria (Definition of Done sections) and want an agent to systematically verify and fix compliance — rather than hoping it remembered every requirement.
+This pattern is useful when you have detailed specs with acceptance criteria (Definition of Done sections) and want an agent to systematically verify and fix compliance rather than hoping it remembered every requirement.
 
 ## When to use this
 
@@ -258,17 +258,17 @@ Otherwise set preferred_next_label to \"more_work_needed\"."
 
 ### How it works
 
-**Sequential audits** — each spec gets its own audit node so the agent can focus on one spec at a time. The prompts ask for structured JSON output with pass/fail per checkbox, making the results machine-parseable for the triage phase.
+Sequential audits: each spec gets its own audit node so the agent can focus on one spec at a time. The prompts ask for structured JSON output with pass/fail per checkbox, making the results machine-parseable for the triage phase.
 
-**Three-category triage** — failures are classified as IMPLEMENTABLE (can fix now), STRUCTURAL (needs architecture work), or DEFERRED (needs external resources). This prevents the agent from wasting cycles on items it can't address in a code-only pass.
+Three-category triage: failures are classified as IMPLEMENTABLE (can fix now), STRUCTURAL (needs architecture work), or DEFERRED (needs external resources). This prevents the agent from wasting cycles on items it can't address in a code-only pass.
 
-**Batched fixes** — the `fix_batch` node tackles up to 5 failures per iteration. The self-loop (`fix_batch -> fix_batch` with `loop_restart=true`) allows it to keep going when more fixes remain, while `goal_gate=true` ensures the workflow only succeeds if fixes were actually applied. Because `loop_restart` begins each round with a fresh, empty context, every iteration re-derives the remaining work from the repository state rather than from accumulated conversation history — see [Failures — Loop restart edges](/execution/failures#loop-restart-edges).
+Batched fixes: the `fix_batch` node tackles up to 5 failures per iteration. The self-loop (`fix_batch -> fix_batch` with `loop_restart=true`) allows it to keep going when more fixes remain, while `goal_gate=true` means the run can finish only after `fix_batch` has ended with a successful outcome, and routing around the node does not skip that check. Because `loop_restart` begins each round with a fresh, empty context, every iteration re-derives the remaining work from the repository state rather than from accumulated conversation history; see [Failures: Loop restart edges](/execution/failures#loop-restart-edges).
 
-**Build gate** — after each fix batch, a script node runs `cargo build` and `cargo test`. If the build breaks, a dedicated `build_fix` node diagnoses and repairs compilation errors before retrying.
+Build gate: after each fix batch, a script node runs `cargo build` and `cargo test`. If the build breaks, a dedicated `build_fix` node diagnoses and repairs compilation errors before retrying.
 
-**Re-audit after fixes** — the `final_audit` node re-checks only the previously-failing items, catching regressions without re-auditing the entire spec. If items remain, the workflow loops back to triage for another round.
+Re-audit after fixes: the `final_audit` node re-checks only the previously-failing items, catching regressions without re-auditing the entire spec. If items remain, the workflow loops back to triage for another round.
 
-**Human gate** — before declaring victory, a human reviews the results and can push for another round if the automated audit missed something.
+Human gate: before declaring victory, a human reviews the results and can push for another round if the automated audit missed something.
 
 ## Multi-model variant
 
@@ -882,17 +882,17 @@ Otherwise set preferred_next_label to \"more_work_needed\"."
 
 ### What the multi-model variant adds
 
-**Independent audits with `fidelity="truncate"`** — each model audits the same spec without seeing the other's answers. This prevents anchoring bias: if Opus marks a checkbox as passing, GPT doesn't blindly agree. The `fidelity="truncate"` attribute strips prior responses from the context while still storing them for later phases.
+Independent audits with `fidelity="truncate"`: each model audits the same spec without seeing the other's answers. This prevents anchoring bias: if Opus marks a checkbox as passing, GPT doesn't blindly agree. The `fidelity="truncate"` attribute strips prior responses from the context while still storing them for later phases.
 
-**Cross-critique** — after all audits complete, each model reviews the other's work. Disagreements are resolved by re-reading the spec and code. This adversarial step catches both false positives (a model said "pass" when the feature is incomplete) and false negatives (a model said "fail" when the code is actually correct).
+Cross-critique: after all audits complete, each model reviews the other's work. Disagreements are resolved by re-reading the spec and code. This adversarial step catches both false positives (a model said "pass" when the feature is incomplete) and false negatives (a model said "fail" when the code is actually correct).
 
-**Consensus merging** — a dedicated merge node combines the four audit reports and two critiques into a single truth. The merge rules are conservative: when in doubt, fail the checkbox.
+Consensus merging: a dedicated merge node combines the four audit reports and two critiques into a single truth. The merge rules are conservative: when in doubt, fail the checkbox.
 
-**Dual triage** — both models independently classify and prioritize failures. The merge takes the more actionable classification (IMPLEMENTABLE > STRUCTURAL > DEFERRED) and averages ranks. Different models weight risks differently, so consensus produces a stronger work plan.
+Dual triage: both models independently classify and prioritize failures. The merge takes the more actionable classification (IMPLEMENTABLE > STRUCTURAL > DEFERRED) and averages ranks. Different models weight risks differently, so consensus produces a stronger work plan.
 
-**Alternating implementation** — Codex implements, Opus reviews and corrects, Codex validates. This draft-critique-validate cycle catches implementation errors before they reach the build gate.
+Alternating implementation: Codex implements, Opus reviews and corrects, Codex validates. This draft-critique-validate cycle catches implementation errors before they reach the build gate.
 
-**Conservative final verification** — both models independently verify fixes. An item is only "verified fixed" if both agree. If either model says it's still failing, it counts as failing. This prevents premature declaration of victory.
+Conservative final verification: both models independently verify fixes. An item is only "verified fixed" if both agree. If either model says it's still failing, it counts as failing. This prevents premature declaration of victory.
 
 ## Key patterns across both variants
 
@@ -908,12 +908,11 @@ Both variants share the same core loop:
 audit → triage → fix → build → verify → (loop or exit)
 ```
 
-The single-model variant runs this loop with one model. The multi-model variant runs it with consensus at each decision point. The loop structure is identical — only the number of participants changes.
+The single-model variant runs this loop with one model. The multi-model variant runs it with consensus at each decision point. The loop structure is identical; only the number of participants changes.
 
 ### `goal_gate` on fix nodes
 
-Fix nodes have `goal_gate=true`, meaning the workflow only succeeds if the agent actually applied fixes. If triage finds nothing implementable and routes directly to exit, the workflow succeeds. But if it routes to fix and the fix node produces no changes, the workflow fails.
-
+Fix nodes have `goal_gate=true`. Before the run exits, Fabro checks that every goal-gated node ended with a successful outcome (succeeded or partially succeeded). Every edge into exit passes through that check, so routing around a gate does not skip it: if triage sends the run straight to exit, the fix node never ran, its gate counts as unmet, and the run goes back to the node named in `retry_target`. The check looks at the node's outcome, whether or not files changed.
 ### Human gate as a safety valve
 
 Both variants end with a human gate. Even after automated verification, a human can review the results and push for another round. This is especially useful when the automated audit might miss subtleties that a human reviewer would catch.

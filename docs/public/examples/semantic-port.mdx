@@ -3,7 +3,7 @@ title: "Semantic Port"
 description: "Continuously port upstream changes from one language to another using a ledger-driven loop"
 ---
 
-A semantic port workflow tracks commits in an upstream repository, analyzes each one for relevance, and either ports the change to a different codebase or acknowledges it as not applicable — then loops back for the next commit. It's an autonomous maintenance loop, not a one-shot build task.
+A semantic port workflow tracks commits in an upstream repository, analyzes each one for relevance, and either ports the change to a different codebase or acknowledges it as not applicable, then loops back for the next commit. It's an autonomous maintenance loop rather than a one-shot build task.
 
 This pattern is useful when you maintain a downstream implementation (e.g., a Go SDK) that tracks an upstream reference (e.g., a Python SDK). Instead of manually reviewing every upstream commit, the workflow processes the backlog commit-by-commit, making intelligent port-or-skip decisions.
 
@@ -151,7 +151,7 @@ fetch → analyze → [Skip] → fetch → analyze → [Port] → plan → imple
 validate → gate → [Pass] → finalize → fetch → ... → [Done] → exit
 ```
 
-This is fundamentally different from a build workflow that runs once and exits. The semantic port workflow is designed to process an entire backlog autonomously, handling dozens of commits in a single run.
+This differs from a build workflow that runs once and exits. The semantic port workflow is designed to process an entire backlog autonomously, handling dozens of commits in a single run.
 
 ### Ledger-driven state
 
@@ -159,17 +159,17 @@ The workflow tracks disposition in an external ledger file (`ledger.tsv`) with t
 
 | Status | Meaning |
 |---|---|
-| `new` | Unprocessed — the workflow hasn't looked at this commit yet |
+| `new` | Unprocessed: the workflow hasn't looked at this commit yet |
 | `acknowledged` | Reviewed and determined to be irrelevant (docs-only, Python-specific, etc.) |
 | `implemented` | Semantic changes ported to the Go codebase |
 
-The ledger is the source of truth for what's been processed. Because it's a plain file committed to Git, it survives across runs — you can stop and resume the workflow and it picks up where it left off.
+The ledger is the source of truth for what's been processed. Because it's a plain file committed to Git, it survives across runs. You can stop and resume the workflow and it picks up where it left off.
 
 ### Semantic analysis, not literal translation
 
-The `analyze` node is the decision point. It examines each upstream commit for *what changed functionally*, not just what code was modified. A commit that refactors Python type hints has no semantic impact on a Go port. A commit that changes retry behavior in the HTTP client does.
+The `analyze` node is the decision point. It examines each upstream commit for *what changed functionally*, rather than only which code was modified. A commit that refactors Python type hints has no semantic impact on a Go port. A commit that changes retry behavior in the HTTP client does.
 
-This distinction is critical — routing a different model (Gemini) to the analysis node via the `.analyze` class brings a fresh perspective to the port/skip decision:
+This distinction is critical. Routing a different model (Gemini) to the analysis node via the `.analyze` class brings a fresh perspective to the port/skip decision:
 
 ```
 .analyze { model: gemini-3.1-pro-preview;}
@@ -195,7 +195,7 @@ analyze -> plan  [label="Port", condition="preferred_label=port"]
 analyze -> fetch [label="Skip", condition="preferred_label=skip"]
 ```
 
-When the agent decides a commit is irrelevant, it updates the ledger, commits the acknowledgment, and loops back to `fetch` immediately — no planning or implementation needed. This keeps the workflow efficient: trivial commits (typo fixes, CI config changes, docs updates) are processed in seconds.
+When the agent decides a commit is irrelevant, it updates the ledger, commits the acknowledgment, and loops back to `fetch` immediately. No planning or implementation is needed. This keeps the workflow efficient: trivial commits (typo fixes, CI config changes, docs updates) are processed in seconds.
 
 ## Multi-model routing
 
@@ -207,9 +207,9 @@ The stylesheet assigns three tiers of models:
 .analyze { model: gemini-3.1-pro-preview; } // Analysis: fresh eyes
 ```
 
-- **Sonnet** handles routine tasks: fetching commits, finalizing plans, updating the ledger
-- **Opus** handles the hard work: implementing ports and diagnosing test failures
-- **Gemini Pro** handles analysis: a different provider brings independent judgment to the port/skip decision, reducing the risk of a single model's blind spots
+- Sonnet handles routine tasks: fetching commits, finalizing plans, updating the ledger
+- Opus handles the hard work: implementing ports and diagnosing test failures
+- Gemini Pro handles analysis: a different provider brings independent judgment to the port/skip decision, reducing the risk of a single model's blind spots
 
 ## Run configuration
 
@@ -247,10 +247,10 @@ fabro run semport.toml
 
 The semantic port pattern generalizes beyond language porting:
 
-- **Spec tracking** — monitor an upstream specification (OpenAPI, protobuf) and propagate changes to client libraries
-- **Dependency updates** — process a queue of dependency version bumps, testing and committing each one
-- **Issue triage** — pull issues from a tracker, classify them, and route to the appropriate workflow
-- **Log analysis** — process a backlog of alerts or log entries, investigating each one
+- Spec tracking. Monitor an upstream specification (OpenAPI, protobuf) and propagate changes to client libraries.
+- Dependency updates. Process a queue of dependency version bumps, testing and committing each one.
+- Issue triage. Pull issues from a tracker, classify them, and route to the appropriate workflow.
+- Log analysis. Process a backlog of alerts or log entries, investigating each one.
 
 The core structure is always the same: fetch the next item, analyze it, decide on an action, execute, record the disposition, loop.
 

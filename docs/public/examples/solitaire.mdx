@@ -3,9 +3,9 @@ title: "Build Solitaire"
 description: "Build a complete application from a spec using phased implementation with verification gates"
 ---
 
-A build-from-scratch workflow takes a high-level goal, expands it into a spec, then implements the application in phases — each phase followed by an independent verification node and a conditional gate that either advances or retries. A final review with `goal_gate=true` ensures the result meets the spec before the workflow can succeed.
+A build-from-scratch workflow takes a high-level goal, expands it into a spec, then implements the application in phases. Each phase is followed by an independent verification node and a conditional gate that either advances or retries. A final review with `goal_gate=true` ensures the result meets the spec before the workflow can succeed.
 
-This pattern is useful when you want an agent to build something non-trivial from zero — a CLI tool, a game, a library — where the implementation naturally decomposes into layers that build on each other.
+This pattern is useful when you want an agent to build something non-trivial from zero (a CLI tool, a game, or a library) where the implementation naturally decomposes into layers that build on each other.
 
 ## The workflow
 
@@ -199,7 +199,7 @@ Spec → Setup → Data Structures → Game Logic → Terminal UI → Integratio
 
 Each phase follows the same three-node pattern: **implement**, **verify**, **gate**. The implement node builds the code, a separate verify node checks it independently, and a conditional gate routes to the next phase on success or back to retry on failure.
 
-This separation matters. The verify node runs with a different prompt and (via the `.verify` class) a cheaper model. It acts as an independent check — not just "did the implementation node think it succeeded?" but "does an independent evaluation confirm the phase is complete?"
+This separation matters. The verify node runs with a different prompt and (via the `.verify` class) a cheaper model. It acts as an independent check that asks whether an independent evaluation confirms the phase is complete, rather than relying on the implementation node's own assessment.
 
 ### Graph-level retry targets
 
@@ -224,11 +224,11 @@ The stylesheet assigns models by role:
 .verify { model: claude-haiku-4-5; }     // Verification: fast, cheap checks
 ```
 
-- **Sonnet** handles routine phases: expanding the spec, setting up the project, wiring integration
-- **Opus** handles the hard phases: implementing game logic and terminal UI where correctness and complexity demand the strongest model
-- **Haiku** handles all verification gates: these are straightforward "run the tests, check the output" tasks that don't need a frontier model
+- Sonnet handles routine phases: expanding the spec, setting up the project, wiring integration
+- Opus handles the hard phases: implementing game logic and terminal UI where correctness and complexity demand the strongest model
+- Haiku handles all verification gates: these are simple "run the tests, check the output" tasks that don't need a frontier model
 
-This keeps costs down. Verification runs after every phase — using Haiku instead of Opus for those checks saves significant tokens across a full run.
+This keeps costs down. Verification runs after every phase. Using Haiku instead of Opus for those checks saves significant tokens across a full run.
 
 ### Goal gate on final review
 
@@ -238,7 +238,7 @@ The `review` node has `goal_gate=true`:
 review [label="Final Review", class="hard", goal_gate=true, ...]
 ```
 
-This means the workflow **cannot succeed** unless the review passes. Even if execution reaches the exit node through some edge routing path, Fabro checks all goal gates and fails the run if any are unsatisfied. The review is the quality bar — it reads the original spec and verifies the implementation against it.
+This means the workflow **cannot succeed** unless the review passes. Even if execution reaches the exit node through some edge routing path, Fabro checks all goal gates and fails the run if any are unsatisfied. The review is the quality bar: it reads the original spec and verifies the implementation against it.
 
 If the review fails, execution routes back to `impl_ui` rather than to the beginning. The assumption is that by the time you reach review, the foundation (data structures, game logic) is solid and only the UI or integration needs fixing.
 
@@ -248,7 +248,7 @@ Each phase reads the spec and builds on the artifacts from prior phases. The dat
 
 This is more reliable than a single "implement everything" node because:
 - Earlier phases are validated before later phases begin
-- Failures are localized — a broken data structure is caught before game logic tries to use it
+- Failures are localized. A broken data structure is caught before game logic tries to use it
 - Retries target the right phase, not the entire build
 
 ## Run configuration
@@ -294,12 +294,12 @@ fabro run build-solitaire.toml
 
 The phased build pattern generalizes to any project that decomposes into layers:
 
-- **CLI tool** — argument parsing → core logic → output formatting → integration tests
-- **REST API** — data models → route handlers → middleware → end-to-end tests
-- **Library** — type definitions → core algorithms → public API → documentation
-- **Compiler** — lexer → parser → type checker → code generator → test suite
+- CLI tool: argument parsing → core logic → output formatting → integration tests
+- REST API: data models → route handlers → middleware → end-to-end tests
+- Library: type definitions → core algorithms → public API → documentation
+- Compiler: lexer → parser → type checker → code generator → test suite
 
-The structure is always the same: decompose into phases that build on each other, verify each one independently, gate advancement on verification, and enforce overall quality with a goal gate on the final review.
+The structure is always the same: decompose into phases that build on each other, verify each one independently, gate advancement on verification, and enforce quality with a goal gate on the final review.
 
 ## Further reading
 
