@@ -11,7 +11,7 @@ Every node execution produces an **outcome** that drives edge routing, retry log
 |---|---|
 | `succeeded` | The handler completed normally |
 | `failed` | The handler encountered an unrecoverable error |
-| `partially_succeeded` | The handler did not fully succeed but produced usable results — typically from retries exhausted with `allow_partial=true` |
+| `partially_succeeded` | The handler did not fully succeed but produced usable results (typically from retries exhausted with `allow_partial=true`) |
 | `skipped` | The node was not executed (e.g. a branch not taken in a parallel fan-out) |
 
 <Note>
@@ -27,8 +27,8 @@ Each node type has its own rules for which outcomes it can return:
 | **Command** | `succeeded`, `failed` | `succeeded` when exit code is 0; `failed` otherwise |
 | **Agent / Prompt** | `succeeded`, `failed`, `partially_succeeded`, `skipped` | Defaults to `succeeded`. The LLM can set any outcome via a [routing directive](/agents/outputs#routing-directives) JSON object in its response. Backend errors request retry when retryable or finish as `failed`. |
 | **Parallel** | `succeeded`, `partially_succeeded`, `failed` | Waits for every branch. `succeeded` when all branches succeed, `failed` when all branches fail, and `partially_succeeded` for mixed or partial results. A static fan-out with no branches remains partial; a valid `for_each` source with zero items succeeds. |
-| **Human** | `succeeded` | Always succeeds — the user's selection becomes a routing signal via `preferred_label` |
-| **Conditional** | `succeeded` | Always succeeds — routing is handled by the engine's edge selection |
+| **Human** | `succeeded` | Always succeeds; the user's selection becomes a routing signal via `preferred_label` |
+| **Conditional** | `succeeded` | Always succeeds; routing is handled by the engine's edge selection |
 | **Start / Exit / Wait** | `succeeded` | Always succeed |
 
 ## Retry loop
@@ -85,7 +85,7 @@ See [Retry policies](/execution/failures#retry-policies) for the available prese
 
 ## Succeed on failure
 
-When a node's effective `on_failure` policy is `succeed`, a `failed` outcome with no explicit recovery route is promoted to `succeeded`. This is applied after the retry loop, so retries still happen normally — only the final outcome changes. The original failure details stay on the `stage.completed` event and in the checkpoint, and the outcome's notes record the promotion.
+When a node's effective `on_failure` policy is `succeed`, a `failed` outcome with no explicit recovery route is promoted to `succeeded`. This is applied after the retry loop, so retries still happen normally: only the final outcome changes. The original failure details stay on the `stage.completed` event and in the checkpoint, and the outcome's notes record the promotion.
 
 | Attribute | Type | Default |
 |---|---|---|
@@ -100,7 +100,7 @@ scan [
 ]
 ```
 
-Use `on_failure="succeed"` for nodes whose failure should never block the workflow — optional scans, best-effort cleanup steps, or informational commands where the output matters more than the exit code. An explicit `condition="outcome=failed"` edge still takes priority; the promotion applies only when no explicit route matches. The policy applies only to `failed` and leaves `partially_succeeded` unchanged. See [Failed-node routing policy](/workflows/transitions#failed-node-routing-policy) for the full set of policies.
+Use `on_failure="succeed"` for nodes whose failure should never block the workflow: optional scans, best-effort cleanup steps, or informational commands where the output matters more than the exit code. An explicit `condition="outcome=failed"` edge still takes priority; the promotion applies only when no explicit route matches. The policy applies only to `failed` and leaves `partially_succeeded` unchanged. See [Failed-node routing policy](/workflows/transitions#failed-node-routing-policy) for the full set of policies.
 
 <Note>
 `auto_status=true` is the deprecated spelling of `on_failure="succeed"`. Fabro still accepts it as an alias, and validation reports an `auto_status_deprecated` warning with the replacement. Unlike the old attribute, the alias no longer promotes `partially_succeeded` outcomes.
@@ -115,7 +115,7 @@ make the workflow fail.
 
 Nodes marked with `goal_gate=true` are checked when the workflow reaches the exit node. A goal gate is satisfied if its last outcome was `succeeded` **or** `partially_succeeded`. Any other outcome (`failed`, `skipped`) causes the workflow to fail, even though execution reached the exit.
 
-This means `allow_partial=true` on a goal gate node lets the gate pass even if the node exhausted its retries — the promoted `partially_succeeded` outcome counts as passing. Likewise, a `succeeded` outcome promoted by `on_failure="succeed"` satisfies the gate.
+This means `allow_partial=true` on a goal gate node lets the gate pass even if the node exhausted its retries. The promoted `partially_succeeded` outcome counts as passing. Likewise, a `succeeded` outcome promoted by `on_failure="succeed"` satisfies the gate.
 
 See [Goal gates](/execution/failures#goal-gates) for retry target resolution and failure behavior.
 

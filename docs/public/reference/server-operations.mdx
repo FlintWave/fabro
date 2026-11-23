@@ -36,15 +36,15 @@ fabro server start
 
 Under a process supervisor with a restart policy (for example docker-compose `restart: unless-stopped`, systemd, or Railway's restart-on-exit) this second start happens automatically.
 
-For headless or scripted environments where no browser is available, run `fabro install` instead — it's the same wizard as a CLI prompt flow.
+For headless or scripted environments where no browser is available, run `fabro install` instead. It's the same wizard as a CLI prompt flow.
 
 Common flags:
 
 | Flag | Default | Description |
 |---|---|---|
 | `--bind` | `~/.fabro/fabro.sock` | Address to bind: `IP` or `IP:port` for TCP, or a path for Unix socket |
-| `--model` | — | Override default LLM model |
-| `--environment` | — | Override default environment slug |
+| `--model` | none | Override default LLM model |
+| `--environment` | none | Override default environment slug |
 | `--max-concurrent-runs` | `5` | Maximum concurrent run executions |
 
 See [Server Configuration](/administration/server-configuration) for the full `settings.toml` reference.
@@ -118,25 +118,25 @@ The server returns immediately with a run ID. After a start request, a backgroun
 
 ## Run lifecycle
 
-1. **Submit** — `POST /api/v1/runs` creates the run with status `submitted`.
-2. **Start request** — `POST /api/v1/runs/{id}/start` makes normal runs `runnable`; parent-generated [child runs](/execution/child-runs) may become `pending` with `approval_required`.
-3. **Approve if needed** — Approving a pending child run makes it `runnable`; denying it fails with `approval_denied`.
-4. **Schedule** — The scheduler picks up `runnable` runs up to `max_concurrent_runs`.
-5. **Execute** — The engine walks the graph, streaming events to all subscribers.
-6. **Complete** — The run transitions to `succeeded`, `failed`, or `dead`.
+1. Submit. `POST /api/v1/runs` creates the run with status `submitted`.
+2. Start request. `POST /api/v1/runs/{id}/start` makes normal runs `runnable`; parent-generated [child runs](/execution/child-runs) may become `pending` with `approval_required`.
+3. Approve if needed. Approving a pending child run makes it `runnable`; denying it fails with `approval_denied`.
+4. Schedule. The scheduler picks up `runnable` runs up to `max_concurrent_runs`.
+5. Execute. The engine walks the graph, streaming events to all subscribers.
+6. Complete. The run transitions to `succeeded`, `failed`, or `dead`.
 
 ## Web UI
 
 The web UI connects to the API server and provides:
 
-- **Runs board** — Monitor all active runs organized by status
-- **Run detail** — Real-time stage progress, event stream, diffs, and usage stats
-- **Files Changed** — Browse changed files with a searchable tree, per-file status, aggregate diff stats, and split or stacked diffs
-- **Settings** — Inspect server configuration, enabled integrations, storage, auth, and capacity settings
-- **Start new run** — Submit workflows from the browser
-- **Human-in-the-loop** — Answer agent questions through the web interface
-- **Workflows** — Browse available workflows, view their graphs, and see run history
-- **Insights** — SQL-based analysis across runs via DuckDB
+- Runs board. Monitor all active runs organized by status.
+- Run detail. Real-time stage progress, event stream, diffs, and usage stats.
+- Files Changed. Browse changed files with a searchable tree, per-file status, aggregate diff stats, and split or stacked diffs.
+- Settings. Inspect server configuration, enabled integrations, storage, auth, and capacity settings.
+- Start new run. Submit workflows from the browser.
+- Human-in-the-loop. Answer agent questions through the web interface.
+- Workflows. Browse available workflows, view their graphs, and see run history.
+- Insights. SQL-based analysis across runs via DuckDB.
 
 <Frame caption="The Runs board shows all active runs organized by status.">
   <img src="/images/web/runs-board.png" alt="Fabro web UI Runs board with Working, Pending, Verify, and Merge columns" />
@@ -148,7 +148,7 @@ The web UI connects to the API server and provides:
 
 ## Event streaming
 
-The API streams run events via [Server-Sent Events (SSE)](/api-reference/runs/stream-run-events). Every stage start, LLM call, tool invocation, and edge selection is emitted as a structured JSON event. Any HTTP client that supports SSE can subscribe — the web UI is just one consumer.
+The API streams run events via [Server-Sent Events (SSE)](/api-reference/runs/stream-run-events). Every stage start, LLM call, tool invocation, and edge selection is emitted as a structured JSON event. Any HTTP client that supports SSE can subscribe. The web UI is just one consumer.
 
 ## Human-in-the-loop
 
@@ -158,8 +158,8 @@ Human-in-the-loop questions are served over HTTP. The engine blocks the current 
 
 The server configures auth with `server.auth.methods`:
 
-- **`dev-token`** — Operators can call the API directly with `Authorization: Bearer fabro_dev_...`, and the web login page can accept the dev token too.
-- **`github`** — End users sign in through GitHub OAuth and receive a browser session cookie.
+- `dev-token`. Operators can call the API directly with `Authorization: Bearer fabro_dev_...`, and the web login page can accept the dev token too.
+- `github`. End users sign in through GitHub OAuth and receive a browser session cookie.
 
 Both methods can be enabled simultaneously:
 
@@ -199,7 +199,7 @@ fabro auth login --server https://fabro.example.com/api/v1 --dev-token fabro_dev
 
 `fabro model list` and `fabro model test` honor `[cli.target]` by default unless you explicitly pass `--storage-dir`. `fabro exec` remains a local agent session and only uses the server when you pass `--server`.
 
-See [User Configuration](/reference/user-configuration#cli-target-section) for the full connection options, including client certificates for proxy-terminated HTTPS endpoints.
+See [User Configuration](/reference/user-configuration#clitarget) for the full connection options, including client certificates for proxy-terminated HTTPS endpoints.
 
 ## Next steps
 
@@ -208,7 +208,7 @@ See [User Configuration](/reference/user-configuration#cli-target-section) for t
     Choose where the server runs: laptop or self-hosted Docker container.
   </Card>
   <Card title="Server Configuration" icon="gear" href="/administration/server-configuration">
-    Full settings.toml reference — authentication, reverse-proxy TLS, run defaults, and more.
+    Full settings.toml reference: authentication, reverse-proxy TLS, run defaults, and more.
   </Card>
   <Card title="API Reference" icon="code" href="/api-reference/overview">
     REST API for submitting runs, streaming events, and managing resources.
