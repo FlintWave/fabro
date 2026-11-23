@@ -151,7 +151,7 @@ For example, node `audit` writes its parsed custom output to `output.audit`. Fab
 If custom schema validation fails for an agent or prompt node, Fabro sends concise validation feedback to the same prompt conversation or agent session and asks for corrected JSON. After `output_retries` repair turns are exhausted, the node fails terminally with `output schema validation failed after N repair attempt(s)`. A command node instead fails deterministically after its first validation, without a repair turn or command retry.
 
 <Note>
-Structured output validation applies to agent, prompt, and command nodes. `backend="acp"` does not support `output_schema` in this release. Custom schemas update `output.{node_id}`; routing schemas update routing fields and merge `context_updates` as flat context keys that edge conditions can read. Edge conditions cannot traverse the custom `output.{node_id}` object.
+Structured output validation applies to agent, prompt, and command nodes. Custom schemas update `output.{node_id}`; routing schemas update routing fields and merge `context_updates` as flat context keys that edge conditions can read. Edge conditions cannot traverse the custom `output.{node_id}` object.
 </Note>
 
 ## Output logging
@@ -168,7 +168,7 @@ These files are written for every agent and prompt node execution, including ret
 
 ## File tracking
 
-Fabro records which files each stage touches. When an agent calls `write_file` or `edit_file`, Fabro tracks the file path. When using a CLI-based agent backend, Fabro snapshots the Git working tree before and after execution and diffs the results.
+Fabro records which files each stage touches. When an agent calls `write_file`, `edit_file`, or `apply_patch`, Fabro tracks the affected paths; ACP agents do not report tracked native writes, so `files_touched` is omitted for that stage.
 
 The tracked paths are stored as `files_touched` on the stage outcome:
 
@@ -189,9 +189,9 @@ The tracked paths are stored as `files_touched` on the stage outcome:
 
 ### How tracking works
 
-For the **API backend**, Fabro subscribes to agent session events. When a `ToolCallStarted` event fires for `write_file` or `edit_file`, Fabro records the `file_path` argument as pending. When the corresponding `ToolCallCompleted` arrives without an error, the path is confirmed as touched. Failed tool calls are discarded.
+For the **API backend**, Fabro subscribes to agent session events. When a `ToolCallStarted` event fires for `write_file`, `edit_file`, or `apply_patch`, Fabro records the affected path (or paths, for `apply_patch`) as pending. When the corresponding `ToolCallCompleted` arrives without an error, the path is confirmed as touched. Failed tool calls are discarded.
 
-For the **CLI** and **ACP** backends, Fabro takes a different approach: it runs `git diff --name-only` and `git ls-files --others --exclude-standard` before and after the external agent session, then computes the difference. Any files that appear in the "after" snapshot but not "before" are recorded as touched.
+For the **ACP backend**, Fabro does not track native file writes; the agent reports none, so `files_touched` is omitted for that stage.
 
 ## Artifact offloading
 
@@ -279,7 +279,7 @@ include = [
 
 Patterns are rooted at the sandbox working directory. `*` and `?` stay within one path segment, while `**` crosses directories. See [`[run.artifacts]`](/execution/run-configuration#runartifacts) for the complete matching contract.
 
-Fabro prunes dependency, cache, and build directories including `.git`, `node_modules`, `target`, `.venv`, `.cache`, and `dist`.
+Fabro prunes dependency, cache, and build directories including `.git`, `node_modules`, `.pnpm-store`, `.npm`, `target`, `.next`, `__pycache__`, `.venv`, `venv`, `.cache`, `.tox`, and `.pytest_cache`.
 
 ### Browse and download captures
 

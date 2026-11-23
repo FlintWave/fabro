@@ -3,7 +3,7 @@ title: "REPL Handoff"
 description: "Plan interactively in Claude Code, then delegate implementation to Fabro for autonomous execution with multi-model code review"
 ---
 
-The REPL Handoff pattern bridges interactive planning in a coding assistant (like Claude Code) with autonomous execution in Fabro. You collaborate with an AI in your terminal to produce a plan, then hand it off to a workflow that implements the plan, runs it through multi-model simplification, and verifies the result — all on cloud resources.
+The REPL Handoff pattern bridges interactive planning in a coding assistant (like Claude Code) with autonomous execution in Fabro. You collaborate with an AI in your terminal to produce a plan, then hand it off to a workflow that implements the plan, runs it through multi-model simplification, and verifies the result, all on cloud resources.
 
 This pattern is useful when a task is well-understood enough to plan interactively but large enough that you don't want to babysit the implementation. The human stays in the loop for the creative part (planning) and delegates the mechanical part (coding, testing, reviewing) to an automated pipeline.
 
@@ -11,8 +11,8 @@ This pattern is useful when a task is well-understood enough to plan interactive
 
 - You've scoped a feature or fix and can describe the steps in a plan
 - The implementation involves writing code, running tests, and iterating on lint/build failures
-- You want multi-model review (not just the model that wrote the code) before calling it done
-- You'd rather not wait at your terminal while the agent codes — let it run in the background on cloud resources
+- You want multi-model review rather than relying on the model that wrote the code alone before calling it done
+- You'd rather not wait at your terminal while the agent codes. Let it run in the background on cloud resources
 
 ## The workflow
 
@@ -63,7 +63,7 @@ digraph ImplementAndSimplify {
 
 ## How the handoff works
 
-The key insight is that **planning happens interactively** and **implementation happens autonomously**. The workflow's `implement` node reads a plan file that you created in your REPL session — it doesn't generate its own plan.
+The key insight is that **planning happens interactively** and **implementation happens autonomously**. The workflow's `implement` node reads a plan file that you created in your REPL session. It does not generate its own plan.
 
 ### Step 1: Plan in Claude Code
 
@@ -127,9 +127,9 @@ Claude Code resolves `CLAUDE_CODE_PLAN_FILE_PATH` to the actual plan file, passe
 
 Before touching any code, the workflow validates the environment:
 
-1. **Toolchain** — ensures Rust is installed (installs via `rustup` if not). Exits immediately if this fails.
-2. **Preflight Compile** — `cargo check --workspace` confirms the codebase compiles. Exits if it doesn't — no point implementing against a broken baseline.
-3. **Preflight Lint** — `cargo clippy --workspace -D warnings` checks for lint warnings. If lints fail, the `fix_lints` agent fixes them (up to 3 attempts) before proceeding.
+1. **Toolchain**: ensures Rust is installed (installs via `rustup` if not). Exits immediately if this fails.
+2. **Preflight Compile**: `cargo check --workspace` confirms the codebase compiles. Exits if it doesn't. There is no point implementing against a broken baseline.
+3. **Preflight Lint**: `cargo clippy --workspace -D warnings` checks for lint warnings. If lints fail, the `fix_lints` agent fixes them (up to 3 attempts) before proceeding.
 
 This guarantees the `implement` node starts from a clean, compiling, lint-free codebase.
 
@@ -152,7 +152,7 @@ After implementation, the code passes through three independent simplification s
 implement → Simplify (Opus) → Simplify (Gemini) → Simplify (GPT-54) → verify
 ```
 
-Each model runs the same `@prompts/simplify.md` prompt but brings different strengths. Running the same review prompt across Claude, Gemini, and GPT catches different classes of issues — verbose code one model wrote that another would simplify, edge cases one model spots that others miss, naming improvements that vary by model preference.
+Each model runs the same `@prompts/simplify.md` prompt but brings different strengths. Running the same review prompt across Claude, Gemini, and GPT catches different classes of issues: verbose code one model wrote that another would simplify, edge cases one model spots that others miss, and naming improvements that vary by model preference.
 
 The models override the graph-level default via per-node `model` attributes:
 
@@ -173,14 +173,14 @@ cargo +nightly-2026-04-14 clippy -q --workspace -- -D warnings 2>&1 && \
 
 This node has two important attributes:
 
-- **`goal_gate=true`** — the workflow cannot succeed unless verification passes
-- **`retry_target="fixup"`** — if verification fails at the exit node, route back to the `fixup` agent instead of failing immediately
+- `goal_gate=true`: the workflow cannot succeed unless verification passes
+- `retry_target="fixup"`: if verification fails at the exit node, route back to the `fixup` agent instead of failing immediately
 
 The `fixup` agent reads the build output and fixes lint warnings and test failures. It loops back to `verify`, with `max_visits=3` as a circuit breaker.
 
 ### Format
 
-A final `cargo fmt --all` ensures consistent formatting. This is also a goal gate — unformatted code means the workflow fails.
+A final `cargo fmt --all` ensures consistent formatting. This is also a goal gate. Unformatted code means the workflow fails.
 
 ## Adapting for other languages
 
@@ -194,7 +194,7 @@ This workflow is Rust-specific, but the pattern generalizes. Replace the shell c
 | Test | `cargo nextest run` | `bun test` | `pytest` |
 | Format | `cargo fmt` | `bun run format` | `ruff format .` |
 
-The agent stages (implement, simplify, fixup) work with any language — they use the Fabro agent's standard tools (Read, Write, Edit, Bash) and follow the plan file regardless of language.
+The agent stages (implement, simplify, fixup) work with any language. They use the Fabro agent's standard tools (Read, Write, Edit, Bash) and follow the plan file regardless of language.
 
 ## Further reading
 

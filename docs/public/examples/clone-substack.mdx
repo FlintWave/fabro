@@ -3,7 +3,7 @@ title: "Clone Substack"
 description: "Build an entire application from a detailed specification using debate planning, a staged verify chain, ensemble review, and a postmortem repair loop"
 ---
 
-The Clone Substack workflow takes a detailed specification document and autonomously builds a complete, working application — in this case, a Substack-like newsletter creation tool. It uses ensemble planning (two independent plans debated into one), a multi-stage verification chain, parallel code review with consensus, and a postmortem repair loop that feeds failures back into the next iteration.
+The Clone Substack workflow takes a detailed specification document and autonomously builds a complete, working application, here a Substack-like newsletter creation tool. It uses ensemble planning (two independent plans debated into one), a multi-stage verification chain, parallel code review with consensus, and a postmortem repair loop that feeds failures back into the next iteration.
 
 This pattern is adapted from [Kilroy](https://github.com/danshapiro/kilroy)'s `substack-spec-v01.fabro`, which builds a full React application from a natural language spec with acceptance criteria.
 
@@ -620,7 +620,7 @@ plan_a -> debate
 plan_b -> debate
 ```
 
-Plan A runs on Claude Opus and Plan B on Gemini Flash. A different provider for each plan means genuinely independent perspectives — different training data, different reasoning patterns, different blind spots. The `debate` node reads both plans and produces a single best-of-breed plan that resolves conflicts and picks the strongest approach for each module.
+Plan A runs on Claude Opus and Plan B on Gemini Flash. A different provider for each plan means independent perspectives: different training data, different reasoning patterns, different blind spots. The `debate` node reads both plans and produces a single best-of-breed plan that resolves conflicts and picks the strongest approach for each module.
 
 When a postmortem exists from a prior iteration, both planners and the debate node read it and adjust the plan to address every identified issue. This creates a feedback loop where each planning round is informed by the failures of the previous one.
 
@@ -634,13 +634,13 @@ verify_test → gate_test → verify_browser → gate_browser →
 verify_artifacts → gate_artifacts → verify_fidelity → gate_fidelity → review
 ```
 
-The checks are ordered by cost — format fixing is nearly instant, builds take seconds, tests take longer, browser checks need a running server, artifact validation cross-references evidence files, and the LLM-based fidelity check is the most expensive. By failing fast on cheap checks, the workflow avoids wasting tokens on fidelity verification when the code doesn't even compile.
+The checks are ordered by cost: format fixing is nearly instant, builds take seconds, tests take longer, browser checks need a running server, artifact validation cross-references evidence files, and the LLM-based fidelity check is the most expensive. By failing fast on cheap checks, the workflow avoids wasting tokens on fidelity verification when the code doesn't even compile.
 
 Each verify step appends errors to `.workflow/verify_errors.log`. When the `implement` node runs again, it reads this error log and makes targeted fixes rather than regenerating from scratch.
 
 ### Fidelity verification
 
-The `verify_fidelity` node is an LLM-based acceptance test. It reads every acceptance criterion (AC1–AC11) from the definition of done, maps each one to concrete files in the implementation, and produces a per-criterion pass/fail verdict. This catches semantic gaps that automated tests miss — a test suite can pass while the app is missing entire features.
+The `verify_fidelity` node is an LLM-based acceptance test. It reads every acceptance criterion (AC1–AC11) from the definition of done, maps each one to concrete files in the implementation, and produces a per-criterion pass/fail verdict. This catches semantic gaps that automated tests miss: a test suite can pass while the app is missing entire features.
 
 The fidelity node communicates its result via [context updates](/workflows/transitions#agent-transitions). It sets `all_acs_pass` to `"true"` or `"false"`, and the downstream gate routes based on that context value:
 
@@ -660,7 +660,7 @@ review_a -> review_consensus
 review_b -> review_consensus
 ```
 
-Both reviewers are instructed to perform **mandatory browser verification** — they must build the app, start a preview server, and verify it serves real HTML. Screenshot artifacts under 5KB are rejected as fake. This prevents the pattern where code passes static analysis but doesn't actually render.
+Both reviewers are instructed to perform **mandatory browser verification**: they must build the app, start a preview server, and verify it serves real HTML. Screenshot artifacts under 5KB are rejected as fake. This prevents the pattern where code passes static analysis but doesn't actually render.
 
 The `review_consensus` node applies strict consensus rules:
 - Both APPROVED with no critical gaps: pass
@@ -706,26 +706,26 @@ The stylesheet assigns models based on task difficulty:
 .branch-b  { model: gemini-3-flash-preview; } // Plan B, Review B: Google perspective
 ```
 
-The `.branch-b` class uses a different provider for both planning and review. This ensures the second opinion is genuinely independent — not just a second run of the same model. The `.hard` class routes implementation to OpenAI's Codex, which is optimized for high-throughput code generation.
+The `.branch-b` class uses a different provider for both planning and review. This ensures the second opinion is independent, rather than a second run of the same model. The `.hard` class routes implementation to OpenAI's Codex, which is tuned for high-throughput code generation.
 
 ## Adapting this pattern
 
 This pattern generalizes beyond React applications:
 
-- **API implementation** — spec is an OpenAPI document, verify chain runs contract tests
-- **CLI tool** — spec is a man page or usage doc, verify chain runs integration tests
-- **Infrastructure** — spec is a Terraform design doc, verify chain runs `terraform plan` and policy checks
-- **Library** — spec is an API surface doc, verify chain runs unit tests and type checks
+- API implementation: spec is an OpenAPI document, verify chain runs contract tests
+- CLI tool: spec is a man page or usage doc, verify chain runs integration tests
+- Infrastructure: spec is a Terraform design doc, verify chain runs `terraform plan` and policy checks
+- Library: spec is an API surface doc, verify chain runs unit tests and type checks
 
 The core structure is always the same: debate plan, implement, verify with escalating checks, ensemble review, postmortem on failure, loop.
 
 To adapt for your project:
 
-1. **Write your spec** with concrete acceptance criteria (the more specific, the better the fidelity check)
-2. **Write validation scripts** for each stage of the verify chain (format, build, test, browser/integration, artifacts)
-3. **Adjust the model stylesheet** for your budget and quality requirements
-4. **Customize prompts** with your project's language, conventions, and file paths
-5. **Tune the verify chain** — add or remove stages to match your project's quality gates
+1. Write your spec with concrete acceptance criteria (the more specific, the better the fidelity check)
+2. Write validation scripts for each stage of the verify chain (format, build, test, browser/integration, artifacts)
+3. Adjust the model stylesheet for your budget and quality requirements
+4. Customize prompts with your project's language, conventions, and file paths
+5. Tune the verify chain: add or remove stages to match your project's quality gates
 
 ## Further reading
 

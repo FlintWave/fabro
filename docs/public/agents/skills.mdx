@@ -3,7 +3,7 @@ title: "Skills"
 description: "Reusable prompt templates that extend agent capabilities"
 ---
 
-Skills are reusable prompt templates that give agents structured instructions for common tasks -- code review, committing, test writing, refactoring, and more. They are discovered automatically from convention directories, listed in the agent's system prompt, and can be invoked either by the user (with `/skill-name` syntax) or by the agent itself (via the `use_skill` tool).
+Skills are reusable prompt templates that give agents structured instructions for common tasks (code review, committing, test writing, refactoring, and more). They are discovered automatically from convention directories, listed in the agent's system prompt, and can be invoked either by the user (with `/skill-name` syntax) or by the agent itself (via the `use_skill` tool).
 
 Fabro implements the open [Agent Skills](https://agentskills.io/home) format. Each skill is a directory containing a `SKILL.md` file with YAML frontmatter and Markdown instructions. See the [Agent Skills specification](https://agentskills.io/specification) for the full file format, and [What are skills?](https://agentskills.io/what-are-skills) for an introduction.
 
@@ -13,8 +13,8 @@ Fabro discovers skills from three convention directories, searched in order:
 
 | Directory | Scope |
 |---|---|
-| `~/.fabro/skills/` | Global -- applies to all projects |
-| `{git_root}/.fabro/skills/` | Project -- checked into the repo |
+| `~/.fabro/skills/` | Global (applies to all projects) |
+| `{git_root}/.fabro/skills/` | Project (checked into the repo) |
 | `{git_root}/skills/` | Project (alternate location) |
 
 Within each directory, Fabro looks for `*/SKILL.md` files (one level of nesting).
@@ -71,7 +71,7 @@ Returns the skill's template text.
 
 ## Lifecycle
 
-1. **Discovery** -- On session startup, Fabro scans the skill directories and parses all valid `SKILL.md` files
-2. **Registration** -- If any skills are found, the `use_skill` tool is registered and the skill list is added to the system prompt
-3. **Expansion** -- On the native agent backend, a leading `/skill-name` command in authored input is expanded before sending to the LLM. Leading whitespace is allowed; later slash tokens stay literal. Workflow context and output requirements remain outside expansion, and generated output-repair turns bypass it
-4. **Tool use** -- The agent can also call `use_skill` at any time to load a skill's template mid-conversation
+1. Discovery. On session startup, Fabro scans the skill directories and parses all valid `SKILL.md` files
+2. Registration. If any skills are found, the `use_skill` tool is registered and the skill list is added to the system prompt
+3. Expansion. On the native agent backend, a leading `/skill-name` command in authored input is expanded before sending to the LLM. Leading whitespace is allowed; later slash tokens stay literal. Workflow context and output requirements remain outside expansion, and generated output-repair turns bypass it
+4. Tool use. The agent can also call `use_skill` at any time to load a skill's template mid-conversation

@@ -3,7 +3,7 @@ title: "Permissions"
 description: "Controlling which tools agents can use"
 ---
 
-Permissions control which tools an agent can use without human approval. Fabro uses a three-tier permission model that balances agent autonomy with safety — read-only agents can explore the codebase freely, read-write agents can also edit files, and full-access agents can run arbitrary shell commands.
+Permissions control which tools an agent can use without human approval. Fabro uses a three-tier permission model that balances agent autonomy with safety (read-only agents can explore the codebase freely, read-write agents can also edit files, and full-access agents can run arbitrary shell commands).
 
 ## Permission levels
 
@@ -56,9 +56,9 @@ Agent wants to run: shell(command="cargo test")
 Allow? [y]es / [a]lways / [n]o:
 ```
 
-- **yes** -- allow this one call
-- **always** -- upgrade the permission level for the rest of the session
-- **no** -- deny the call (the agent receives an error and can try a different approach)
+- yes: allow this one call
+- always: upgrade the permission level for the rest of the session
+- no: deny the call (the agent receives an error and can try a different approach)
 
 Choosing "always" on a write tool upgrades to `read-write`. Choosing "always" on a shell tool upgrades to `full`.
 
@@ -90,10 +90,9 @@ The following sequence shows how Fabro decides whether to execute a tool call:
 
 When agents run inside Fabro workflows, the workflow engine manages tool approval. Workflow agents typically run with full auto-approval since the workflow itself defines the trust boundary -- the sandbox provider (local, Docker, or Daytona) controls what the agent can actually access.
 
-For CLI-backed workflow agents, each provider handles auto-approval differently:
-- **Anthropic** (Claude Code) -- uses `--dangerously-skip-permissions` to bypass interactive prompts
-- **OpenAI** (Codex) -- uses `--full-auto` mode
-- **Gemini** -- uses `--yolo` flag
+For API agents, the node's permission level (`read-only`, `read-write`, or `full`) governs tool auto-approval, with unapproved tools denied in non-interactive mode.
+
+For ACP agents, Fabro requires the `full` permission level and refuses to start when a restricted level is configured. Tool approval goes through the ACP `session/request_permission` request: when no `pre_tool_use` hook is configured Fabro answers `allow_always`, and when one is configured Fabro answers `allow_once` so the hook runs on every subsequent call. A blocking `pre_tool_use` hook can reject the request.
 
 ## Further reading
 

@@ -44,11 +44,11 @@ digraph NLSpecConformance {
     }
 
     // Phase 3: Quick conformance loop
-    test_quick [label="Quick Conformance", shape=parallelogram, script="make conformance-quick 2>&1 || true"]
+    test_quick [label="Quick Conformance", shape=parallelogram, script="make conformance-quick 2>&1"]
     gate_quick [shape=diamond, label="Quick suite passing?"]
 
     // Phase 4: Full conformance
-    test_full [label="Full Conformance", shape=parallelogram, script="make conformance-full 2>&1 || true", goal_gate=true, retry_target="fix"]
+    test_full [label="Full Conformance", shape=parallelogram, script="make conformance-full 2>&1", goal_gate=true, retry_target="fix"]
     gate_full [shape=diamond, label="All tests passing?"]
 
     // Wiring
@@ -160,17 +160,17 @@ The agent writes its plan to `plan.md`, the human reviews it, and either approve
 
 To use this pattern:
 
-1. **Write your spec** as a Markdown file in the repo (e.g. `docs/spec.md`)
-2. **Write conformance tests** that exercise the spec's requirements via a CLI or test runner. Split them into quick (core paths) and full (everything) suites.
-3. **Wire the Makefile** so `make conformance-quick` and `make conformance-full` run the suites and output results
-4. **Customize the prompts** to reference your spec file, your project's language and conventions, and your conformance contract
+1. Write your spec as a Markdown file in the repo (e.g. `docs/spec.md`)
+2. Write conformance tests that exercise the spec's requirements via a CLI or test runner. Split them into quick (core paths) and full (everything) suites.
+3. Wire the Makefile so `make conformance-quick` and `make conformance-full` run the suites and output results
+4. Customize the prompts to reference your spec file, your project's language and conventions, and your conformance contract
 
 The pattern works for any spec that has automated verification: API contracts with integration tests, protocol implementations with compliance suites, or library specs with unit tests.
 
 ## What you've learned
 
-- The **conformance loop** (implement, test, fix, repeat) is the core pattern for spec-driven development
-- **Two-tier conformance** (quick then full) keeps iteration fast
-- **Shared threads** (`thread_id`) give the fix node context from prior iterations
-- **`max_visits`** prevents infinite loops when the agent can't pass
-- **`goal_gate`** makes conformance a hard requirement for workflow success
+- The conformance loop (implement, test, fix, repeat) is the core pattern for spec-driven development
+- Two-tier conformance (quick then full) keeps iteration fast
+- Shared threads (`thread_id`) give the fix node context from prior iterations
+- `max_visits` prevents infinite loops when the agent can't pass
+- `goal_gate` makes conformance a hard requirement for workflow success

@@ -3,7 +3,7 @@ title: "Hooks"
 description: "Run custom logic in response to workflow lifecycle events"
 ---
 
-Hooks let you run custom logic at key points during a workflow — before a stage starts, after a run completes, when a sandbox is ready, and more. Use them for validation, notifications, guardrails, and orchestration without modifying the workflow graph itself.
+Hooks let you run custom logic at key points during a workflow: before a stage starts, after a run completes, when a sandbox is ready, and more. Use them for validation, notifications, guardrails, and orchestration without modifying the workflow graph itself.
 
 The examples below are configuration fragments for `workflow.toml`. Add them to a workflow configuration using the current [run configuration schema](/execution/run-configuration).
 
@@ -111,7 +111,7 @@ Each hook fires on a specific lifecycle event:
 | `parallel_complete` | After parallel branches merge | No |
 | `sandbox_ready` | After the sandbox is initialized and ready | Yes |
 | `sandbox_cleanup` | Before the sandbox is torn down | No |
-| `checkpoint_saved` | After a checkpoint is written to disk | No |
+| `checkpoint_saved` | Accepted in configuration, but never fires. Fabro warns when a hook listens for it. | No |
 | `pre_tool_use` | Before an agent tool call executes | Yes |
 | `post_tool_use` | After an agent tool call succeeds | No |
 | `post_tool_use_failure` | After an agent tool call fails | No |
@@ -120,9 +120,9 @@ Each hook fires on a specific lifecycle event:
 
 Hooks are defined as `[[run.hooks]]` entries in any of these TOML config files:
 
-- **`.fabro/project.toml`** — project-level hooks, apply to all workflows in the project
-- **`workflow.toml`** — per-workflow hooks
-- **`~/.fabro/settings.toml`** — global defaults for all runs
+- `.fabro/project.toml`: project-level hooks, apply to all workflows in the project
+- `workflow.toml`: per-workflow hooks
+- `~/.fabro/settings.toml`: global defaults for all runs
 
 Each entry selects one transport: `script` or `command`, `url`, `prompt`, or `agent = "enabled"` together with `prompt`. Do not add a `type` field; the transport fields select the hook type.
 
@@ -157,13 +157,13 @@ sandbox = false
 
 ## Blocking vs. non-blocking
 
-Blocking hooks can affect workflow execution. Non-blocking hooks run for side effects only — their decisions are ignored.
+Blocking hooks can affect workflow execution. Non-blocking hooks run for side effects only, and their decisions are ignored.
 
 **Blocking by default:** `run_start`, `stage_start`, `edge_selected`, `pre_tool_use`, `sandbox_ready`. These events represent decision points where a hook can prevent or redirect execution.
 
 **Non-blocking by default:** All other events. Override with `blocking = true` if needed.
 
-When multiple blocking hooks match the same event, they run sequentially. If any hook returns a `block` decision, execution short-circuits — remaining hooks are skipped.
+When multiple blocking hooks match the same event, they run sequentially. If any hook returns a `block` decision, execution short-circuits; remaining hooks are skipped.
 
 ## Hook decisions
 
@@ -268,11 +268,11 @@ model = "haiku"
 
 ### Sandbox vs. host
 
-By default, command hooks run **inside the sandbox** (`sandbox = true`). This means they execute in the same environment as the agent's tools — same filesystem, same installed packages.
+By default, command hooks run **inside the sandbox** (`sandbox = true`). This means they execute in the same environment as the agent's tools (same filesystem, same installed packages).
 
 Set `sandbox = false` to run on the host machine. This is useful for hooks that need access to host-only resources (CI systems, local credentials, notification tools).
 
-HTTP, prompt, and agent hooks ignore this setting — HTTP calls are always made from the host, and prompt/agent hooks use the LLM API directly.
+HTTP, prompt, and agent hooks ignore this setting: HTTP calls are always made from the host, and prompt/agent hooks use the LLM API directly.
 
 ### Environment variables
 
@@ -311,7 +311,7 @@ The full event context is available as a JSON payload. For command hooks running
 ```
 </Accordion>
 
-Fields vary by event — `edge_from`/`edge_to`/`edge_label` are only set for `edge_selected`, `failure_reason` for failure events, `attempt`/`max_attempts` for `stage_retrying`, etc. Null fields are omitted from the serialized JSON.
+Fields vary by event: `edge_from`/`edge_to`/`edge_label` are only set for `edge_selected`, `failure_reason` for failure events, `attempt`/`max_attempts` for `stage_retrying`, etc. Null fields are omitted from the serialized JSON.
 
 For tool-level events (`pre_tool_use`, `post_tool_use`, `post_tool_use_failure`), the context includes additional fields:
 
@@ -347,17 +347,17 @@ Each hook type has a default timeout:
 | Prompt | 30 seconds |
 | Agent | 60 seconds |
 
-Override with `timeout` on any hook definition, using a duration string such as `timeout = "30s"` or `timeout = "2m"`. Supported units are `ms`, `s`, `m`, `h`, and `d`. Prompt and agent hooks **fail open** on timeout — execution proceeds as if the hook returned `ok: true`.
+Override with `timeout` on any hook definition, using a duration string such as `timeout = "30s"` or `timeout = "2m"`. Supported units are `ms`, `s`, `m`, `h`, and `d`. Prompt and agent hooks **fail open** on timeout, so execution proceeds as if the hook returned `ok: true`.
 
 ## Fail-open behavior
 
 Hooks are designed to be safe by default. Several failure modes result in the hook proceeding rather than blocking:
 
-- **Prompt/agent LLM call fails** — proceeds
-- **Prompt/agent hook times out** — proceeds
-- **Prompt hook returns unparseable JSON** — proceeds
-- **HTTP hook returns non-2xx** — proceeds
-- **HTTP hook connection fails** — proceeds
+- Prompt/agent LLM call fails: proceeds
+- Prompt/agent hook times out: proceeds
+- Prompt hook returns unparseable JSON: proceeds
+- HTTP hook returns non-2xx: proceeds
+- HTTP hook connection fails: proceeds
 
 Command hooks do **not** fail open. A non-zero exit code (other than 0 or 2) produces a `block` decision.
 
@@ -365,9 +365,9 @@ Command hooks do **not** fail open. A non-zero exit code (other than 0 or 2) pro
 
 Hooks from multiple config files are merged in this order (later layers replace hooks with the same `id`):
 
-1. **`~/.fabro/settings.toml`** — global defaults
-2. **`.fabro/project.toml`** — project-level overrides
-3. **`workflow.toml`** — per-workflow overrides
+1. `~/.fabro/settings.toml`: global defaults
+2. `.fabro/project.toml`: project-level overrides
+3. `workflow.toml`: per-workflow overrides
 
 Hooks with matching `id` values replace in place. Hooks without an `id` append after inherited hooks, even when their `name` matches. Use `id` when a workflow should override an inherited hook.
 

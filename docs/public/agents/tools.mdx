@@ -3,10 +3,10 @@ title: "Tools"
 description: "Built-in tools for file I/O, shell commands, search, and web access"
 ---
 
-Every agent in Fabro has access to a set of built-in tools for interacting with the codebase and environment. Tools execute inside the agent's [sandbox](/execution/environments) — whether that's the local machine, a Docker container, or a Daytona VM — so the same tool calls work identically regardless of provider.
+Every agent in Fabro has access to a set of built-in tools for interacting with the codebase and environment. Tools execute inside the agent's [sandbox](/execution/environments) (whether that's the local machine, a Docker container, or a Daytona VM), so the same tool calls work identically regardless of provider.
 
 <Note>
-The tools described on this page apply to the **API backend** (the default). When using the [ACP backend](/core-concepts/agents#acp-backend), the external agent process provides its own tools — Fabro's built-in tools are not used.
+The tools described on this page apply to the **API backend** (the default). When using the [ACP backend](/core-concepts/agents#acp-backend), the external agent process provides its own tools. Fabro's built-in tools are not used.
 </Note>
 
 ## Core tools
@@ -40,7 +40,7 @@ Some tools are only available with certain LLM providers:
 
 ### shell
 
-Executes the command as Bash source in the sandbox's working directory, equivalent to `bash -c <command>`. The shell is not a login shell, and Fabro adds no shell options of its own — no `errexit`, no `pipefail`. Docker and Daytona sandboxes require `/bin/bash`; local sandboxes resolve `bash` through the worker's `PATH`.
+Executes the command as Bash source in the sandbox's working directory, equivalent to `bash -c <command>`. The shell is not a login shell, and Fabro adds no shell options of its own: no `errexit`, no `pipefail`. Docker and Daytona sandboxes require `/bin/bash`; local sandboxes resolve `bash` through the worker's `PATH`.
 
 To run something under a different interpreter, say so in the command itself (`sh -c ...`, a script with a `#!/bin/sh` shebang, or an explicit `set -o pipefail`); those run beneath Fabro's Bash boundary.
 
@@ -50,7 +50,7 @@ To run something under a different interpreter, say so in the command itself (`s
 | `timeout_ms` | integer | no | Timeout in milliseconds |
 | `description` | string | no | Description of what the command does |
 
-The timeout defaults to the provider's configured value (10s for most providers, 120s for Anthropic) and is capped at the maximum (600s / 10 minutes). If the command exceeds the timeout, Fabro kills the process and returns a "Command timed out" message along with any output captured so far.
+The timeout defaults to the provider's configured value (10s for most providers, 60s for Kimi, 120s for Anthropic) and is capped at the maximum (600s / 10 minutes). If the command exceeds the timeout, Fabro kills the process and returns a "Command timed out" message along with any output captured so far.
 
 The output includes the exit code, stdout, and stderr.
 
@@ -218,18 +218,19 @@ Tool output is truncated before being stored in conversation history to prevent 
 
 | Tool | Character limit | Truncation mode |
 |---|---|---|
-| `grep` | 30,000 | Tail (keep end) |
+| `grep` | 20,000 | Tail (keep end) |
 | `glob` | 20,000 | Tail |
+| `read_file` | 50,000 | Head + tail |
+| `shell` | 30,000 | Head + tail |
+| `spawn_agent` | 20,000 | Head + tail |
 | `edit_file` | 10,000 | Tail |
 | `apply_patch` | 10,000 | Tail |
 | `write_file` | 1,000 | Tail |
 | Other tools | No default limit | Head + tail |
 
-Limits can be overridden per-tool via `SessionConfig.tool_output_limits`.
-
 ### Error handling
 
-When a tool call fails, the error is returned to the agent as a tool result with an error flag — the agent loop continues. Tool errors do **not** fail the stage. The LLM sees the error message and decides how to respond: retry the call, try an alternative approach, or move on.
+When a tool call fails, the error is returned to the agent as a tool result with an error flag. The agent loop continues. Tool errors do **not** fail the stage. The LLM sees the error message and decides how to respond: retry the call, try an alternative approach, or move on.
 
 Common error cases:
 
@@ -247,7 +248,7 @@ Shell commands have two timeout settings:
 
 | Setting | Default | Description |
 |---|---|---|
-| `default_command_timeout_ms` | 10,000 (120,000 for Anthropic) | Timeout when the agent doesn't specify one |
+| `default_command_timeout_ms` | 10,000 (60,000 for Kimi, 120,000 for Anthropic) | Timeout when the agent doesn't specify one |
 | `max_command_timeout_ms` | 600,000 (10 minutes) | Hard cap regardless of what the agent requests |
 
 The agent can request a specific timeout via the `timeout_ms` parameter, but it's always capped at the maximum.
